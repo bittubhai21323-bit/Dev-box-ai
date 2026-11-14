@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="accessibility_desc">Allows DevBox AI to retrieve on-screen content and respond to window changes.</string>
+    <string name="accessibility_desc">DevBox AI accessibility service for user-authorized automation.</string>
 </resources>
