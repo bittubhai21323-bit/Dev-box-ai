@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="accessibility_desc">DevBox AI accessibility service for user-authorized automation.</string>
+    <string name="app_name">DevBox AI</string>
+    <string name="accessibility_desc">DevBox AI uses accessibility to help with user-authorized automation tasks.</string>
 </resources>
