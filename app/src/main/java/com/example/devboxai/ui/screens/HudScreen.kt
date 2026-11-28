@@ -22,9 +22,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,15 +32,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.devboxai.termux.TermuxHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -54,8 +52,12 @@ import java.util.Locale
 
 private val HudGreen = Color(0xFF39FF88)
 private val HudCyan = Color(0xFF00E5FF)
-private val HudPanel = Color(0xCC02140C)
+private val HudPanel = Color(0xD902140C)
 
+/**
+ * Hacker HUD home screen — layout mirrors the reference photo:
+ * hacker in the centre with a rotating HUD ring, live panels at the corners.
+ */
 @Composable
 fun HudScreen(onOpenTerminal: () -> Unit = {}) {
     val context = LocalContext.current
@@ -159,191 +161,194 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
         }
     }
 
+    // Animations: rotating ring + blinking status dot
+    val transition = rememberInfiniteTransition(label = "hud")
+    val rotation by transition.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
+        label = "ring"
+    )
+    val blink by transition.animateFloat(
+        initialValue = 0.25f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
+        label = "blink"
+    )
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // Hacker photo background
         if (bgBitmap != null) {
             Image(
                 bitmap = bgBitmap.asImageBitmap(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
-                alpha = 0.55f
+                alpha = 0.85f
             )
         }
-        // Rotating HUD ring overlay (live animation)
-        val transition = rememberInfiniteTransition(label = "hud")
-        val rotation by transition.animateFloat(
-            initialValue = 0f, targetValue = 360f,
-            animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
-            label = "ring"
-        )
-        val blink by transition.animateFloat(
-            initialValue = 0.25f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
-            label = "blink"
-        )
+
+        // Big rotating HUD ring around the hacker (like the photo)
         Canvas(
-            Modifier.size(320.dp).align(Alignment.Center).rotate(rotation)
+            Modifier.size(350.dp).align(Alignment.Center).offset(y = (-30).dp).rotate(rotation)
         ) {
             val r = size.minDimension / 2f
-            drawCircle(HudCyan.copy(alpha = 0.35f), radius = r, style = Stroke(2f))
-            drawCircle(HudGreen.copy(alpha = 0.30f), radius = r * 0.82f, style = Stroke(1.5f))
-            drawCircle(HudCyan.copy(alpha = 0.22f), radius = r * 0.64f, style = Stroke(1f))
-            // tick marks
+            drawCircle(HudCyan.copy(alpha = 0.45f), radius = r, style = Stroke(2.5f))
+            drawCircle(HudGreen.copy(alpha = 0.38f), radius = r * 0.84f, style = Stroke(2f))
+            drawCircle(HudCyan.copy(alpha = 0.28f), radius = r * 0.66f, style = Stroke(1.5f))
             for (i in 0 until 36) {
                 val angle = Math.toRadians((i * 10).toDouble())
                 val inner = if (i % 3 == 0) r * 0.90f else r * 0.95f
                 drawLine(
-                    HudGreen.copy(alpha = 0.5f),
+                    HudGreen.copy(alpha = 0.6f),
                     Offset(center.x + (inner * kotlin.math.cos(angle)).toFloat(), center.y + (inner * kotlin.math.sin(angle)).toFloat()),
                     Offset(center.x + (r * kotlin.math.cos(angle)).toFloat(), center.y + (r * kotlin.math.sin(angle)).toFloat()),
                     strokeWidth = 2f
                 )
             }
-            // sweep dot
-            drawCircle(HudGreen, radius = 5f, center = Offset(center.x + r, center.y))
+            drawCircle(HudGreen, radius = 6f, center = Offset(center.x + r, center.y))
+            drawCircle(HudCyan, radius = 4f, center = Offset(center.x - r * 0.84f, center.y))
         }
+
+        // Title (top centre, like the photo)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top status row
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                HudPanelBox {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("SYS STATUS: ONLINE ", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                        Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(HudGreen.copy(alpha = blink)))
-                    }
-                    Text("ENCRYPTION: AES-256 | ACTIVE", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                }
-                HudPanelBox {
-                    Text("TIME: $clock", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                    Text(
-                        if (uplink) "UPLINK: STABLE ${if (netType.isNotBlank()) "($netType)" else ""}" else "UPLINK: OFFLINE",
-                        color = if (uplink) HudGreen else Color(0xFFFF5252),
-                        fontFamily = FontFamily.Monospace, fontSize = 11.sp
-                    )
-                }
-            }
+            Text(
+                "DEVBOX AI", color = HudCyan, fontSize = 30.sp,
+                fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace
+            )
+            Text(
+                "HUD • HOME SCREEN • SECURE SESSION", color = HudGreen, fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
 
-            // Update banner (appears when a newer build is on GitHub)
-            if (updateAvailable) {
-                HudPanelBox(Modifier.fillMaxWidth()) {
-                    Text(
-                        "⬆ NAYA UPDATE HAI!",
-                        color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 13.sp
-                    )
-                    if (updateProgress in 0..100) {
-                        LinearProgressIndicator(
-                            progress = { updateProgress / 100f },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            color = HudGreen
-                        )
-                        Text("Download: $updateProgress%", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                    } else {
-                        Button(
-                            onClick = {
-                                val updater = com.example.devboxai.update.UpdateManager(context)
-                                if (!updater.canInstallPackages()) {
-                                    updater.requestInstallPermission()
-                                } else {
-                                    updateProgress = 0
-                                    scope.launch {
-                                        val file = updater.downloadApk(updateUrl) { p -> updateProgress = p }
-                                        if (file != null) {
-                                            updater.markInstalled(updateStamp)
-                                            updater.installApk(file)
-                                        }
-                                        updateProgress = -1
-                                    }
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = HudCyan, contentColor = Color.Black)
-                        ) { Text("UPDATE KARO", fontFamily = FontFamily.Monospace) }
-                    }
+        // Top-left panel: SYS STATUS / ENCRYPTION
+        HudPanelBox(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 78.dp).widthIn(max = 180.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("SYS STATUS: ONLINE ", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                Box(Modifier.size(8.dp).clip(CircleShape).background(HudGreen.copy(alpha = blink)))
+            }
+            Text("ENCRYPTION: AES-256 | ACTIVE", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+        }
+
+        // Top-right panel: TIME / UPLINK
+        HudPanelBox(Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 78.dp).widthIn(max = 180.dp)) {
+            Text("TIME: $clock", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+            Text(
+                if (uplink) "UPLINK: STABLE ${if (netType.isNotBlank()) "($netType)" else ""}" else "UPLINK: OFFLINE",
+                color = if (uplink) HudGreen else Color(0xFFFF5252),
+                fontFamily = FontFamily.Monospace, fontSize = 10.sp
+            )
+        }
+
+        // Left panel: boot log + live feed (terminal style, like the photo)
+        HudPanelBox(Modifier.align(Alignment.CenterStart).padding(start = 8.dp).widthIn(max = 200.dp)) {
+            bootLines.forEach { line ->
+                Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 9.sp)
+            }
+            if (liveLog.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text("LIVE FEED:", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 9.sp)
+                liveLog.forEach { line ->
+                    Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 8.sp)
                 }
             }
+        }
 
-            // Title
-            HudPanelBox(Modifier.fillMaxWidth()) {
-                Text(
-                    "DEVBOX AI", color = HudCyan, fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Text(
-                    "HUD • HOME SCREEN • SECURE SESSION", color = HudGreen, fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-            }
+        // Right panel: live meters (like the photo)
+        HudPanelBox(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).widthIn(max = 190.dp)) {
+            Text("CPU LOAD: ${(cpuLoad * 100).toInt()}%", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+            HudBar(cpuLoad)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "MEM: %.1fGB / %.1fGB".format(memUsedGb, memTotalGb),
+                color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp
+            )
+            HudBar(if (memTotalGb > 0) (memUsedGb / memTotalGb).toFloat() else 0f)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "PACKETS: %.1f MB RX | %.1f MB TX".format(rxMb, txMb),
+                color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 10.sp
+            )
+            Text(
+                "PROCESS: devbox_core (PID $myPid) | RUNNING",
+                color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 10.sp
+            )
+            Text(
+                "NETWORK NODES: $netNodes LINKED",
+                color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 10.sp
+            )
+        }
 
-            // Boot log
-            HudPanelBox(Modifier.fillMaxWidth()) {
-                bootLines.forEach { line ->
-                    Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                }
-            }
-
-            // Live meters
-            HudPanelBox(Modifier.fillMaxWidth()) {
-                Text("CPU LOAD: ${(cpuLoad * 100).toInt()}%", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                HudBar(cpuLoad)
-                Spacer(Modifier.height(8.dp))
+        // Update banner (below title when a newer build exists)
+        if (updateAvailable) {
+            HudPanelBox(Modifier.align(Alignment.TopCenter).padding(top = 128.dp).widthIn(max = 260.dp)) {
                 Text(
-                    "MEM: %.1fGB / %.1fGB".format(memUsedGb, memTotalGb),
-                    color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 13.sp
-                )
-                HudBar(if (memTotalGb > 0) (memUsedGb / memTotalGb).toFloat() else 0f)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "PACKETS: %.1f MB RX | %.1f MB TX".format(rxMb, txMb),
-                    color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp
-                )
-                Text(
-                    "PROCESS: devbox_core (PID $myPid) | RUNNING",
+                    "⬆ NAYA UPDATE HAI!",
                     color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 12.sp
                 )
-                Text(
-                    "NETWORK NODES: $netNodes LINKED",
-                    color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp
-                )
-            }
-
-            // Live terminal feed
-            if (liveLog.isNotEmpty()) {
-                HudPanelBox(Modifier.fillMaxWidth()) {
-                    Text("LIVE FEED:", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                    liveLog.forEach { line ->
-                        Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
-                    }
+                if (updateProgress in 0..100) {
+                    LinearProgressIndicator(
+                        progress = { updateProgress / 100f },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        color = HudGreen
+                    )
+                    Text("Download: $updateProgress%", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                } else {
+                    Button(
+                        onClick = {
+                            val updater = com.example.devboxai.update.UpdateManager(context)
+                            if (!updater.canInstallPackages()) {
+                                updater.requestInstallPermission()
+                            } else {
+                                updateProgress = 0
+                                scope.launch {
+                                    val file = updater.downloadApk(updateUrl) { p -> updateProgress = p }
+                                    if (file != null) {
+                                        updater.markInstalled(updateStamp)
+                                        updater.installApk(file)
+                                    }
+                                    updateProgress = -1
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = HudCyan, contentColor = Color.Black)
+                    ) { Text("UPDATE KARO", fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
                 }
             }
+        }
 
-            // Access bar
-            HudPanelBox(Modifier.fillMaxWidth()) {
-                Text(
-                    "ACCESS LEVEL: ${if (isRoot) "ROOT" else "USER"} • IP: $ip",
-                    color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 12.sp,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-            }
+        // Bottom-left panel: ACCESS LEVEL / IP
+        HudPanelBox(Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 108.dp).widthIn(max = 200.dp)) {
+            Text(
+                "ACCESS LEVEL: ${if (isRoot) "ROOT" else "USER"}",
+                color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp
+            )
+            Text(
+                "IP: $ip",
+                color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 10.sp
+            )
+        }
 
-            // Scan
+        // Bottom area: scan panel + action buttons
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             if (scanProgress >= 0f) {
                 HudPanelBox(Modifier.fillMaxWidth()) {
                     Text(
                         "SCAN: ${(scanProgress * 100).toInt()}% ${if (scanProgress >= 1f) "• COMPLETE" else "• RUNNING..."}",
-                        color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 13.sp
+                        color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp
                     )
                     HudBar(scanProgress)
                     if (scanReport.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
-                        Text(scanReport, color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                        Text(scanReport, color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
                     }
                 }
             }
-
-            // Buttons
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = {
@@ -352,21 +357,17 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
                         scope.launch {
                             scanProgress = 0f
                             val warnings = mutableListOf<String>()
-                            // storage check
                             val stat = StatFs(Environment.getDataDirectory().path)
                             val freePct = if (stat.totalBytes > 0) stat.availableBytes * 100 / stat.totalBytes else 100
                             if (freePct < 10) warnings += "LOW STORAGE ($freePct% free)"
                             scanProgress = 0.25f; delay(400)
-                            // battery check
                             val batt = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
                             val level = batt?.getIntExtra(BatteryManager.EXTRA_LEVEL, 100) ?: 100
                             if (level < 15) warnings += "LOW BATTERY ($level%)"
                             scanProgress = 0.5f; delay(400)
-                            // temperature check
                             val maxTemp = withContext(Dispatchers.IO) { maxTempC() }
                             if (maxTemp > 45) warnings += "HIGH TEMP (%.0f°C)".format(maxTemp)
                             scanProgress = 0.75f; delay(400)
-                            // network check
                             if (!isOnline(context)) warnings += "NO NETWORK"
                             scanProgress = 1f
                             scanReport = if (warnings.isEmpty())
@@ -388,7 +389,6 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
                     Text("[ TERMINAL ]", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
                 }
             }
-
             Text(
                 "DEVBOX AI — SECURE MODE", color = HudGreen, fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
@@ -405,7 +405,7 @@ private fun HudPanelBox(modifier: Modifier = Modifier, content: @Composable Colu
             .clip(RoundedCornerShape(8.dp))
             .background(HudPanel)
             .border(1.dp, HudCyan.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-            .padding(10.dp),
+            .padding(8.dp),
         content = content
     )
 }
