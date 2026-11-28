@@ -25,7 +25,7 @@ fun SettingsScreen() {
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall)
-        OutlinedTextField(value = openAi, onValueChange = { openAi = it; saved = false }, label = { Text("OpenAI API key") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = openAi, onValueChange = { openAi = it; saved = false }, label = { Text("Gemini API key (free: aistudio.google.com)") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = gh, onValueChange = { gh = it; saved = false }, label = { Text("GitHub token") }, modifier = Modifier.fillMaxWidth())
 
         Text("Voice language", style = MaterialTheme.typography.titleSmall)

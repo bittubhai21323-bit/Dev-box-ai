@@ -22,25 +22,29 @@ class ConversationEngine(
 
     suspend fun send(conversationId: String, userText: String): String {
         val key = apiKeyProvider()
-        if (key.isBlank()) return "Settings → OpenAI API key daalo."
+        if (key.isBlank()) return "Settings → Gemini API key daalo. (Free key: aistudio.google.com)"
 
         chatDao.insert(ChatMessage(conversationId = conversationId, role = "user", content = userText))
 
         val history = chatDao.lastMessages(conversationId, 20).reversed()
-        val messagesJson = JSONArray()
+        val contentsJson = JSONArray()
         history.forEach {
-            messagesJson.put(JSONObject().put("role", it.role).put("content", it.content))
+            val geminiRole = if (it.role == "assistant") "model" else "user"
+            contentsJson.put(
+                JSONObject()
+                    .put("role", geminiRole)
+                    .put("parts", JSONArray().put(JSONObject().put("text", it.content)))
+            )
         }
 
         val payload = JSONObject().apply {
-            put("model", "gpt-4o-mini")
-            put("messages", messagesJson)
+            put("contents", contentsJson)
         }
 
         val response = withContext(Dispatchers.IO) {
             val req = Request.Builder()
-                .url("https://api.openai.com/v1/chat/completions")
-                .header("Authorization", "Bearer $key")
+                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+                .header("x-goog-api-key", key)
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
                 .build()
             client.newCall(req).execute().use { res ->
@@ -50,8 +54,9 @@ class ConversationEngine(
         }
 
         val reply = try {
-            JSONObject(response).getJSONArray("choices")
-                .getJSONObject(0).getJSONObject("message").getString("content")
+            JSONObject(response).getJSONArray("candidates")
+                .getJSONObject(0).getJSONObject("content")
+                .getJSONArray("parts").getJSONObject(0).getString("text")
         } catch (_: Exception) { response }
 
         chatDao.insert(ChatMessage(conversationId = conversationId, role = "assistant", content = reply))
