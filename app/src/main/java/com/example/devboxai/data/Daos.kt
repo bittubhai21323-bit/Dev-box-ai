@@ -45,6 +45,7 @@ interface RoutineDao {
 @Dao
 interface TaskDao {
     @Query("SELECT * FROM DailyTask WHERE date = :d") fun forDate(d: String): Flow<List<DailyTask>>
+    @Query("SELECT * FROM DailyTask ORDER BY date DESC, id DESC") fun all(): Flow<List<DailyTask>>
     @Insert suspend fun insert(t: DailyTask): Long
     @Update suspend fun update(t: DailyTask)
     @Delete suspend fun delete(t: DailyTask)

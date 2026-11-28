@@ -25,4 +25,13 @@ object RoutineScheduler {
         am.setInexactRepeating(AlarmManager.RTC_WAKEUP, cal.timeInMillis,
             AlarmManager.INTERVAL_DAY, pi)
     }
+
+    fun cancel(context: Context, id: Long) {
+        val am = context.getSystemService(AlarmManager::class.java) ?: return
+        val pi = PendingIntent.getBroadcast(
+            context, id.toInt(), Intent(context, ReminderReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        am.cancel(pi)
+    }
 }

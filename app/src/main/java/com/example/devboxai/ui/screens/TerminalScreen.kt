@@ -61,6 +61,8 @@ fun TerminalScreen() {
     var busy by remember { mutableStateOf(false) }
     var workDirPath by rememberSaveable { mutableStateOf(context.filesDir.absolutePath) }
     val workDir = File(workDirPath)
+    // Termux mode me har command naya shell hota hai, isliye cd ko yaad rakhna padta hai
+    var termuxDir by rememberSaveable { mutableStateOf("") }
     var lines by rememberSaveable(stateSaver = termLineSaver) {
         mutableStateOf(
             listOf(
@@ -74,7 +76,10 @@ fun TerminalScreen() {
     var historyIndex by rememberSaveable { mutableStateOf(-1) }
     val listState = rememberLazyListState()
 
-    fun prompt(): String = if (useTermux) "devbox@termux:~$ " else "devbox@kali:${workDir.name}$ "
+    fun prompt(): String = if (useTermux) {
+        val d = if (termuxDir.isBlank()) "~" else File(termuxDir).name.ifBlank { "/" }
+        "devbox@termux:$d$ "
+    } else "devbox@kali:${workDir.name}$ "
 
     fun append(text: String, isCommand: Boolean = false) {
         lines = lines + TermLine(text, isCommand)
@@ -117,12 +122,27 @@ fun TerminalScreen() {
                 else append("cd: no such directory: $target")
                 return
             }
+            cmd.startsWith("cd") && useTermux -> {
+                val target = cmd.removePrefix("cd").trim().ifBlank { "~" }
+                busy = true
+                scope.launch {
+                    val base = if (termuxDir.isBlank()) "cd ~" else "cd '${termuxDir.replace("'", "'\\''")}'"
+                    val r = TermuxHelper.runAndWait(context, "$base && cd '${target.replace("'", "'\\''")}' && pwd", timeoutMs = 30_000)
+                    val newPath = r?.stdout?.trim()?.lines()?.lastOrNull()
+                    if (r != null && r.exit == 0 && !newPath.isNullOrBlank()) termuxDir = newPath
+                    else append("cd: no such directory: $target")
+                    busy = false
+                }
+                return
+            }
         }
 
         busy = true
         scope.launch {
             val output = if (useTermux) {
-                val result = TermuxHelper.runAndWait(context, cmd, timeoutMs = 60_000)
+                val fullCmd = if (termuxDir.isBlank()) cmd
+                    else "cd '${termuxDir.replace("'", "'\\''")}' && $cmd"
+                val result = TermuxHelper.runAndWait(context, fullCmd, timeoutMs = 60_000)
                 when {
                     result == null -> "Termux se jawab nahi aaya (Termux me allow-external-apps on karo)"
                     result.stdout.isNotBlank() -> result.stdout.trimEnd() +
@@ -249,9 +269,25 @@ private suspend fun runLocalShell(command: String, workDir: File): String = with
             .directory(workDir)
             .redirectErrorStream(true)
             .start()
-        val output = process.inputStream.bufferedReader().readText()
-        process.waitFor()
-        val trimmed = output.trimEnd()
+        val sb = StringBuilder()
+        val reader = Thread {
+            try {
+                process.inputStream.bufferedReader().forEachLine { line ->
+                    synchronized(sb) { if (sb.length < 50_000) sb.append(line).append("\n") }
+                }
+            } catch (_: Exception) {}
+        }
+        reader.start()
+        val finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            reader.join(1000)
+            val partial = synchronized(sb) { sb.toString() }.trimEnd()
+            return@withContext (if (partial.isBlank()) "" else partial + "\n") +
+                "⏱ Command 30 second me pura nahi hua — rok diya gaya. (ping ke liye 'ping -c3' use karo)"
+        }
+        reader.join(2000)
+        val trimmed = synchronized(sb) { sb.toString() }.trimEnd()
         if (trimmed.isBlank()) "(no output)" else trimmed
     } catch (e: Exception) {
         "Error: ${e.message}"

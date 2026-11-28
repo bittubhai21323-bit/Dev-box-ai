@@ -60,6 +60,20 @@ fun TermuxToolsScreen() {
         }
     }
 
+    // Agar Termux jawab hi na de to busy hamesha ke liye atka na rahe
+    LaunchedEffect(busy) {
+        if (busy) {
+            kotlinx.coroutines.delay(60_000)
+            if (busy) {
+                busy = false
+                output = "⏱ Termux se jawab nahi aaya (60 second).\n" +
+                    "Check karo: Termux app ek baar khula hai? ~/.termux/termux.properties me allow-external-apps=true hai? " +
+                    "Phir dobara Run dabao."
+                showOutput = true
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
@@ -82,7 +96,7 @@ fun TermuxToolsScreen() {
         }
 
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(filtered) { tool ->
+            items(filtered, key = { it.name }) { tool ->
                 ToolCard(tool) { cmd ->
                     if (!TermuxHelper.hasRunPermission(context)) {
                         output = "Termux permission chahiye — Allow karo, phir dobara Run dabao."
@@ -114,7 +128,7 @@ fun TermuxToolsScreen() {
 
 @Composable
 private fun ToolCard(tool: CliTool, onRun: (String) -> Unit) {
-    var arg by remember(tool.name) { mutableStateOf(tool.defaultArg) }
+    var arg by rememberSaveable(tool.name) { mutableStateOf(tool.defaultArg) }
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {

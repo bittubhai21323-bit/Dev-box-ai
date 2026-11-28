@@ -52,8 +52,30 @@ fun SecurityScreen() {
 private fun BlockedTab(app: DevBoxApp, blocker: AppBlocker, scope: kotlinx.coroutines.CoroutineScope) {
     val blocked by app.db.blockedAppDao().all().collectAsState(initial = emptyList())
     var showPicker by rememberSaveable { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // App blocking Accessibility service se chalta hai — OFF hai to block kaam nahi karega
+    var accessibilityOn by remember { mutableStateOf(com.example.devboxai.DevAccessibilityService.isRunning()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            accessibilityOn = com.example.devboxai.DevAccessibilityService.isRunning()
+            kotlinx.coroutines.delay(2000)
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
+        if (!accessibilityOn) {
+            Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("⚠ Accessibility OFF hai — app block kaam nahi karega", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
+                    Text("Settings me jaake DevBox AI ki Accessibility service ON karo, tabhi blocked app rukega.", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = {
+                        try { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (_: Exception) {}
+                    }, modifier = Modifier.padding(top = 6.dp)) { Text("Accessibility Settings kholo") }
+                }
+            }
+        } else {
+            Text("✓ Accessibility ON hai — blocking chal rahi hai", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 8.dp))
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Blocked apps: ${blocked.size}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             Button(onClick = { showPicker = true }) { Icon(Icons.Default.Add, null); Text("Block") }
@@ -96,8 +118,9 @@ private fun AppPickerDialog(blocker: AppBlocker, onDismiss: () -> Unit, onPick: 
                 OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text("Search") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = reason, onValueChange = { reason = it }, label = { Text("Reason") }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
                 Spacer(Modifier.height(8.dp))
+                if (apps.isEmpty()) Text("Apps load ho rahe hai…", style = MaterialTheme.typography.bodySmall)
                 LazyColumn(Modifier.height(300.dp)) {
-                    items(apps.filter { it.label.contains(query, true) }) { a ->
+                    items(apps.filter { it.label.contains(query, true) }, key = { it.pkg }) { a ->
                         ListItem(
                             headlineContent = { Text(a.label) },
                             supportingContent = { Text(a.pkg, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) },
@@ -107,22 +130,26 @@ private fun AppPickerDialog(blocker: AppBlocker, onDismiss: () -> Unit, onPick: 
                 }
             }
         },
-        confirmButton = {}
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
 @Composable
 private fun ScannerTab(guardian: ProcessGuardian, scope: kotlinx.coroutines.CoroutineScope) {
-    var results by remember { mutableStateOf<List<ProcessGuardian.RiskyApp>>(emptyList()) }
-    var scanning by remember { mutableStateOf(false) }
+    // State holder me hai — tab badalne par scan/result gayab nahi hoga
+    val state = com.example.devboxai.security.AppScanState
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Button(onClick = { scanning = true; scope.launch { results = guardian.scanRiskyApps(); scanning = false } }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (scanning) "Scanning…" else "Scan all apps")
+        Button(onClick = { state.startScan(guardian) }, enabled = !state.scanning, modifier = Modifier.fillMaxWidth()) {
+            Text(if (state.scanning) "Scanning…" else "Scan all apps")
+        }
+        if (state.scanned && state.results.isEmpty() && !state.scanning) {
+            Text("✓ Koi risky app nahi mila", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
         }
         Spacer(Modifier.height(12.dp))
         LazyColumn {
-            items(results) { r ->
+            items(state.results, key = { it.packageName }) { r ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Column(Modifier.padding(12.dp)) {
                         Text(r.label, style = MaterialTheme.typography.titleSmall)
@@ -162,6 +189,10 @@ private fun WebScanTab() {
 @Composable
 private fun LogsTab(app: DevBoxApp) {
     val logs by app.db.securityLogDao().all().collectAsState(initial = emptyList())
+    if (logs.isEmpty()) {
+        Text("Abhi koi log nahi hai", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+        return
+    }
     LazyColumn(Modifier.fillMaxSize().padding(12.dp)) {
         items(logs) { l ->
             Card(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {

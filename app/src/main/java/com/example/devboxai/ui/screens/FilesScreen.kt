@@ -1,6 +1,7 @@
 package com.example.devboxai.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -28,6 +29,9 @@ fun FilesScreen() {
     val fm = remember { FileManager(context) }
     var current by remember { mutableStateOf<DocumentFile?>(null) }
     var files by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    val pathStack = remember { mutableStateListOf<DocumentFile>() }
+    var zipStatus by rememberSaveable { mutableStateOf("") }
+    var zipping by remember { mutableStateOf(false) }
     var codeOnly by rememberSaveable { mutableStateOf(false) }
     // Remember the picked root folder so returning to this tab restores it
     var rootUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -37,6 +41,17 @@ fun FilesScreen() {
         val raw = fm.list(dir)
         files = if (codeOnly) CodeFileManager.filter(raw) else raw
     }
+
+    fun openDir(dir: DocumentFile) {
+        current?.let { pathStack.add(it) }
+        load(dir)
+    }
+
+    fun goBack() {
+        if (pathStack.isNotEmpty()) load(pathStack.removeAt(pathStack.lastIndex))
+    }
+
+    BackHandler(enabled = pathStack.isNotEmpty()) { goBack() }
 
     LaunchedEffect(Unit) {
         if (current == null) {
@@ -56,6 +71,7 @@ fun FilesScreen() {
             rootUri = uri.toString()
             context.getSharedPreferences("devbox_files", android.content.Context.MODE_PRIVATE)
                 .edit().putString("root_uri", uri.toString()).apply()
+            pathStack.clear()
             fm.fromTree(uri)?.let { load(it) }
         }
     }
@@ -66,23 +82,55 @@ fun FilesScreen() {
             Button(onClick = { current?.let { load(it) } }) { Text("Refresh") }
             Button(onClick = { codeOnly = !codeOnly; current?.let { load(it) } }) { Text(if (codeOnly) "All" else "Code only") }
         }
-        Text(current?.name ?: "No folder", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp))
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            if (pathStack.isNotEmpty()) {
+                TextButton(onClick = { goBack() }) { Text("⬆ Upar") }
+            }
+            Text(current?.name ?: "No folder", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp))
+        }
         HorizontalDivider()
+        if (current != null && files.isEmpty()) {
+            Text("Folder khali hai", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
+        }
         LazyColumn(Modifier.weight(1f)) {
-            items(files) { f ->
+            items(files, key = { it.uri.toString() }) { f ->
                 ListItem(
                     headlineContent = { Text((if (f.isDirectory) "📁 " else "📄 ") + (f.name ?: "")) },
-                    modifier = Modifier.clickable { if (f.isDirectory) load(f) }
+                    modifier = Modifier.clickable {
+                        if (f.isDirectory) openDir(f)
+                        else {
+                            // File ko uske app me kholo
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(f.uri, f.type ?: "*/*")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Open with"))
+                            } catch (_: Exception) {
+                                zipStatus = "Ye file khul nahi payi — is type ka app nahi mila"
+                            }
+                        }
+                    }
                 )
             }
         }
         Button(onClick = {
             val c = current ?: return@Button
+            zipping = true; zipStatus = "Zip ban raha hai…"
             scope.launch(Dispatchers.IO) {
-                val target = fm.createFile(c, "archive-${System.currentTimeMillis()}.zip") ?: return@launch
-                ZipHelper.zip(context, c, target)
-                withContext(Dispatchers.Main) { load(c) }
+                val target = fm.createFile(c, "archive-${System.currentTimeMillis()}.zip")
+                if (target == null) {
+                    withContext(Dispatchers.Main) { zipping = false; zipStatus = "✗ Zip file ban nahi payi" }
+                    return@launch
+                }
+                try {
+                    ZipHelper.zip(context, c, target)
+                    withContext(Dispatchers.Main) { zipping = false; zipStatus = "✓ Zip ban gaya: ${target.name}"; load(c) }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) { zipping = false; zipStatus = "✗ Zip fail: ${e.message}" }
+                }
             }
-        }, modifier = Modifier.padding(top = 8.dp)) { Text("Zip this folder") }
+        }, enabled = !zipping, modifier = Modifier.padding(top = 8.dp)) { Text(if (zipping) "Zip ban raha hai…" else "Zip this folder") }
+        if (zipStatus.isNotBlank()) Text(zipStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
     }
 }
