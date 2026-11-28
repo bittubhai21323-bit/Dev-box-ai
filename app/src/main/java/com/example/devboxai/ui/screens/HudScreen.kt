@@ -4,11 +4,13 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.TrafficStats
 import android.os.BatteryManager
 import android.os.Environment
 import android.os.StatFs
+import android.util.Base64
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -16,6 +18,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,7 +33,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -66,6 +71,14 @@ fun HudScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val hackerBitmap = remember {
+        try {
+            val b64 = context.assets.open("hud_bg.b64").bufferedReader().readText()
+            val bytes = Base64.decode(b64, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (_: Exception) { null }
+    }
 
     var clock by remember { mutableStateOf("") }
     var uplink by remember { mutableStateOf(false) }
@@ -190,10 +203,26 @@ fun HudScreen(
         val oy = (maxHeight - imgH) / 2
         val fs = { f: Float -> (imgW.value * f).sp }
 
-        // Rotating HUD ring in the centre (where the poster's ring was)
+        // Hacker photo inside the circle (simple, centred)
+        val ringSize = imgW * 0.85f
+        val ringY = oy + imgH * 0.245f
+        if (hackerBitmap != null) {
+            val photoSize = imgW * 0.64f
+            Image(
+                bitmap = hackerBitmap.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier
+                    .offset(x = ox + (imgW - photoSize) / 2, y = ringY + (ringSize - photoSize) / 2)
+                    .size(photoSize)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        // Rotating HUD ring around the hacker photo
         Canvas(
-            Modifier.offset(x = ox + imgW * 0.075f, y = oy + imgH * 0.245f)
-                .size(imgW * 0.85f).rotate(rotation)
+            Modifier.offset(x = ox + (imgW - ringSize) / 2, y = ringY)
+                .size(ringSize).rotate(rotation)
         ) {
             val r = size.minDimension / 2f
             drawCircle(HudCyan.copy(alpha = 0.5f), radius = r, style = Stroke(2.5f))
