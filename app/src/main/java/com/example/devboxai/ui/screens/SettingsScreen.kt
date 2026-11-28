@@ -88,8 +88,14 @@ fun SettingsScreen() {
                         val file = updater.downloadApk(updateUrl) { p -> progress = p }
                         downloading = false
                         if (file != null) {
-                            updater.markInstalled(updateStamp)
-                            updateStatus = if (updater.installApk(file)) "Install ho raha hai..." else "Install fail — dobara try karo"
+                            // markInstalled sirf tab, jab installer khul jaye —
+                            // pehle mark karne se cancel karne par update gayab ho jata tha
+                            val launched = updater.installApk(file)
+                            if (launched) {
+                                updater.markInstalled(updateStamp)
+                                updateUrl = ""
+                                updateStatus = "Install ho raha hai..."
+                            } else updateStatus = "Install fail — dobara try karo"
                         } else updateStatus = "Download fail — internet check karo"
                     }
                 }

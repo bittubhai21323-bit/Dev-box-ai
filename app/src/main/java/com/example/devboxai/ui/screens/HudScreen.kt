@@ -325,6 +325,13 @@ fun HudScreen(
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                     )
                 } else {
+                    if (updateProgress == -2) {
+                        Text(
+                            "Download fail — internet check karke dobara dabao",
+                            color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = fs(0.022f),
+                            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     Button(
                         onClick = {
                             val updater = com.example.devboxai.update.UpdateManager(context)
@@ -335,10 +342,11 @@ fun HudScreen(
                                 scope.launch {
                                     val file = updater.downloadApk(updateUrl) { p -> updateProgress = p }
                                     if (file != null) {
-                                        updater.markInstalled(updateStamp)
-                                        updater.installApk(file)
+                                        if (updater.installApk(file)) updater.markInstalled(updateStamp)
+                                        updateProgress = -1
+                                    } else {
+                                        updateProgress = -2 // download fail — neeche message dikhega
                                     }
-                                    updateProgress = -1
                                 }
                             }
                         },

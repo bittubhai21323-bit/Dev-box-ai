@@ -40,6 +40,23 @@ class UpdateManager(private val context: Context) {
      * a downloaded update so the new version does not re-report it.
      */
     suspend fun checkFromGitHub(): UpdateInfo = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences("devbox_update", Context.MODE_PRIVATE)
+        // Cache: GitHub allows only 60 unauthenticated checks/hour per IP,
+        // so reuse the last result for 30 minutes instead of failing silently.
+        val now = System.currentTimeMillis()
+        val lastCheck = prefs.getLong("last_check_time", 0L)
+        if (now - lastCheck < 30 * 60 * 1000) {
+            val cachedStamp = prefs.getString("cached_stamp", "") ?: ""
+            val cachedUrl = prefs.getString("cached_url", "") ?: ""
+            if (cachedStamp.isNotBlank() && cachedUrl.isNotBlank()) {
+                return@withContext UpdateInfo(
+                    available = isNewer(cachedStamp, prefs.getString(PREF_STAMP, null)),
+                    versionName = "naya build",
+                    apkUrl = cachedUrl,
+                    changelog = "Stamp: $cachedStamp"
+                )
+            }
+        }
         try {
             val req = Request.Builder().url(RELEASE_API)
                 .header("Accept", "application/vnd.github+json").build()
@@ -59,26 +76,13 @@ class UpdateManager(private val context: Context) {
                     }
                 }
                 if (stamp.isBlank() || url.isBlank()) return@withContext UpdateInfo(false)
-                val prefs = context.getSharedPreferences("devbox_update", Context.MODE_PRIVATE)
-                val stored = prefs.getString(PREF_STAMP, null)
-                // If we never recorded an install stamp, compare the release
-                // asset time with this APK's last-update time instead of
-                // blindly treating the current build as up-to-date.
-                val available = if (stored != null) {
-                    stored != stamp
-                } else {
-                    val assetTime = try {
-                        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
-                            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-                            .parse(stamp)?.time ?: 0L
-                    } catch (_: Exception) { 0L }
-                    val installedAt = try {
-                        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
-                    } catch (_: Exception) { 0L }
-                    assetTime > installedAt + 120_000
-                }
+                prefs.edit()
+                    .putLong("last_check_time", now)
+                    .putString("cached_stamp", stamp)
+                    .putString("cached_url", url)
+                    .apply()
                 UpdateInfo(
-                    available = available,
+                    available = isNewer(stamp, prefs.getString(PREF_STAMP, null)),
                     versionName = "naya build",
                     apkUrl = url,
                     changelog = "Stamp: $stamp"
@@ -88,6 +92,25 @@ class UpdateManager(private val context: Context) {
             Log.w("UpdateManager", "GitHub check failed", e)
             UpdateInfo(false)
         }
+    }
+
+    /**
+     * A build counts as new only if the release asset is newer than the
+     * installed APK's last-update time AND we have not already installed
+     * this exact asset. This avoids both the false "update hai" loop after
+     * installing and the missed update when the installer is cancelled.
+     */
+    private fun isNewer(stamp: String, stored: String?): Boolean {
+        if (stored == stamp) return false
+        val assetTime = try {
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                .parse(stamp)?.time ?: 0L
+        } catch (_: Exception) { 0L }
+        val installedAt = try {
+            context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        } catch (_: Exception) { 0L }
+        return assetTime > installedAt + 120_000
     }
 
     fun markInstalled(stamp: String) {
@@ -116,6 +139,7 @@ class UpdateManager(private val context: Context) {
                     val body = res.body ?: return@withContext null
                     val total = body.contentLength()
                     var read = 0L
+                    var complete = true
                     body.byteStream().use { ins ->
                         out.outputStream().use { os ->
                             val buf = ByteArray(8192)
@@ -128,6 +152,9 @@ class UpdateManager(private val context: Context) {
                             }
                         }
                     }
+                    // Adhoora download installer ko "corrupt package" deta hai — pehle hi rok do
+                    if (total > 0 && read < total) complete = false
+                    if (!complete || out.length() == 0L) { out.delete(); return@withContext null }
                 }
                 out
             } catch (e: Exception) { null }
