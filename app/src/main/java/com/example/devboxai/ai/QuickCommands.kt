@@ -71,6 +71,8 @@ object QuickCommands {
                 /kernel — kernel jaankari
                 /process — chal rahe processes (Termux se)
                 /system — poori system report
+                /apk edit <kya badalna hai> — AI se APK edit karo
+                /apk build — edited APK ko rebuild + sign karo
             """.trimIndent()
 
             "mausam", "weather" -> {

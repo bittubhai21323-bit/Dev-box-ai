@@ -30,6 +30,17 @@ class ConversationEngine(
             return localReply
         }
 
+        // APK AI editor: "/apk edit ..." or natural language ("apk ka naam badal do")
+        val ctx = contextProvider()
+        val apkInstruction = com.example.devboxai.apk.ApkAiEditor.detectInstruction(userText)
+        if (ctx != null && apkInstruction != null) {
+            val editor = com.example.devboxai.apk.ApkAiEditor(ctx) { prompt -> askAiRaw(prompt) }
+            val result = try { editor.handle(apkInstruction) }
+                         catch (e: Exception) { "APK edit me error: ${e.message}" }
+            chatDao.insert(ChatMessage(conversationId = conversationId, role = "assistant", content = result))
+            return result
+        }
+
         val history = chatDao.lastMessages(conversationId, 20).reversed()
         val key = apiKeyProvider()
 
@@ -41,6 +52,13 @@ class ConversationEngine(
 
         chatDao.insert(ChatMessage(conversationId = conversationId, role = "assistant", content = reply))
         return reply
+    }
+
+    /** Single-prompt AI call (Gemini key if set, else free server). Used by the APK AI editor. */
+    suspend fun askAiRaw(prompt: String): String {
+        val one = listOf(ChatMessage(conversationId = "raw", role = "user", content = prompt))
+        val key = apiKeyProvider()
+        return if (key.isNotBlank()) askGemini(key, one) else askFreeServer(one)
     }
 
     /** Free no-key AI server (Pollinations). Used when no Gemini key is set. */
