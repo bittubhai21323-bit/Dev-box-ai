@@ -46,7 +46,7 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.documentfile:documentfile:1.0.1")
-    implementation("com.google.mlkit:language-id:17.0.9")
+    implementation("com.google.mlkit:language-id:17.0.6")
     implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
     implementation("com.google.firebase:firebase-config-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
