@@ -21,8 +21,10 @@ object FirebaseBootstrap {
             initialized = false; return false
         }
         return try {
+            // FCM (push) sirf DEFAULT FirebaseApp ke saath kaam karta hai —
+            // named app par token/message kabhi nahi aata tha. Isliye default app banao.
             FirebaseApp.getApps(context).forEach {
-                if (it.name == APP_NAME) try { it.delete() } catch (_: Exception) {}
+                try { it.delete() } catch (_: Exception) {}
             }
             val options = FirebaseOptions.Builder()
                 .setProjectId(creds.projectId)
@@ -32,7 +34,7 @@ object FirebaseBootstrap {
                 .setStorageBucket(creds.storageBucket)
                 .apply { if (creds.databaseUrl.isNotBlank()) setDatabaseUrl(creds.databaseUrl) }
                 .build()
-            FirebaseApp.initializeApp(context, options, APP_NAME)
+            FirebaseApp.initializeApp(context, options)
             initialized = true
             Log.i(TAG, "Firebase initialized ✓ project=${creds.projectId}")
             true
@@ -44,10 +46,10 @@ object FirebaseBootstrap {
 
     fun app(): FirebaseApp? {
         return try {
-            FirebaseApp.getInstance(APP_NAME)
+            FirebaseApp.getInstance()
         } catch (_: IllegalStateException) {
             try {
-                FirebaseApp.getInstance()
+                FirebaseApp.getInstance(APP_NAME)
             } catch (_: IllegalStateException) {
                 null
             }
@@ -57,7 +59,7 @@ object FirebaseBootstrap {
     fun reset(context: Context) {
         try {
             FirebaseApp.getApps(context).forEach {
-                if (it.name == APP_NAME) it.delete()
+                try { it.delete() } catch (_: Exception) {}
             }
         } catch (_: Exception) {}
         FirebaseConfigStore(context).clear()

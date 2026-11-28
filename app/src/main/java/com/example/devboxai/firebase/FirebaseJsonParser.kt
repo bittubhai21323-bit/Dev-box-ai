@@ -6,7 +6,16 @@ object FirebaseJsonParser {
     fun parse(json: String): Result<FirebaseCredentials> = try {
         val root = JSONObject(json.trim())
         val projectInfo = root.getJSONObject("project_info")
-        val client = root.getJSONArray("client").getJSONObject(0)
+        // File me 2 apps ho sakte hai (devboxai + dady.me) — sahi wala package se chuno,
+        // pehla wala blindly lene se galat app connect ho jata tha
+        val clients = root.getJSONArray("client")
+        var client = clients.getJSONObject(0)
+        for (i in 0 until clients.length()) {
+            val c = clients.optJSONObject(i) ?: continue
+            val pkg = c.optJSONObject("client_info")
+                ?.optJSONObject("android_client_info")?.optString("package_name", "")
+            if (pkg == "com.example.devboxai") { client = c; break }
+        }
         val projectId = projectInfo.optString("project_id", "")
         val gcmSenderId = projectInfo.optString("project_number", "")
         val storageBucket = projectInfo.optString("storage_bucket", "")

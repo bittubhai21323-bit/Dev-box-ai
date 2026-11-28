@@ -22,6 +22,7 @@ class FcmService : FirebaseMessagingService() {
                 "android" to android.os.Build.VERSION.SDK_INT,
                 "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
             ))
+            ?.addOnFailureListener { e -> Log.w("FCM", "Device save fail (sign-in chahiye?): ${e.message}") }
     }
 
     override fun onMessageReceived(msg: RemoteMessage) {
