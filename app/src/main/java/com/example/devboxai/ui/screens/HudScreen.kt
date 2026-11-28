@@ -11,6 +11,13 @@ import android.os.BatteryManager
 import android.os.Environment
 import android.os.StatFs
 import android.util.Base64
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,7 +30,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +77,10 @@ fun HudScreen() {
     var rxMb by remember { mutableStateOf(0.0) }
     var txMb by remember { mutableStateOf(0.0) }
     var ip by remember { mutableStateOf("—") }
+    var netType by remember { mutableStateOf("") }
+    var netNodes by remember { mutableStateOf(0) }
+    var liveLog by remember { mutableStateOf(listOf<String>()) }
+    val myPid = remember { android.os.Process.myPid() }
     val isRoot = remember {
         listOf("/system/bin/su", "/system/xbin/su", "/sbin/su", "/su/bin/su", "/system/app/Superuser.apk")
             .any { File(it).exists() }
@@ -89,9 +103,12 @@ fun HudScreen() {
             bootLines = bootLines + line
         }
         ip = withContext(Dispatchers.IO) { deviceIp() }
+        var tick = 0
         while (true) {
             clock = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             uplink = isOnline(context)
+            netType = networkType(context)
+            netNodes = withContext(Dispatchers.IO) { upInterfaces() }
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val info = ActivityManager.MemoryInfo()
             am.getMemoryInfo(info)
@@ -100,7 +117,14 @@ fun HudScreen() {
             rxMb = TrafficStats.getTotalRxBytes().coerceAtLeast(0) / (1024.0 * 1024)
             txMb = TrafficStats.getTotalTxBytes().coerceAtLeast(0) / (1024.0 * 1024)
             cpuLoad = withContext(Dispatchers.IO) { cpuUsage() }
-            delay(2000)
+            tick++
+            if (tick % 3 == 0) {
+                val stamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                val line = "> [$stamp] CPU ${(cpuLoad * 100).toInt()}% • MEM %.1fGB • RX %.1fMB • TX %.1fMB"
+                    .format(memUsedGb, rxMb, txMb)
+                liveLog = (liveLog + line).takeLast(5)
+            }
+            delay(1000)
         }
     }
 
@@ -114,6 +138,39 @@ fun HudScreen() {
                 alpha = 0.55f
             )
         }
+        // Rotating HUD ring overlay (live animation)
+        val transition = rememberInfiniteTransition(label = "hud")
+        val rotation by transition.animateFloat(
+            initialValue = 0f, targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
+            label = "ring"
+        )
+        val blink by transition.animateFloat(
+            initialValue = 0.25f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
+            label = "blink"
+        )
+        Canvas(
+            Modifier.size(320.dp).align(Alignment.Center).rotate(rotation)
+        ) {
+            val r = size.minDimension / 2f
+            drawCircle(HudCyan.copy(alpha = 0.35f), radius = r, style = Stroke(2f))
+            drawCircle(HudGreen.copy(alpha = 0.30f), radius = r * 0.82f, style = Stroke(1.5f))
+            drawCircle(HudCyan.copy(alpha = 0.22f), radius = r * 0.64f, style = Stroke(1f))
+            // tick marks
+            for (i in 0 until 36) {
+                val angle = Math.toRadians((i * 10).toDouble())
+                val inner = if (i % 3 == 0) r * 0.90f else r * 0.95f
+                drawLine(
+                    HudGreen.copy(alpha = 0.5f),
+                    Offset(center.x + (inner * kotlin.math.cos(angle)).toFloat(), center.y + (inner * kotlin.math.sin(angle)).toFloat()),
+                    Offset(center.x + (r * kotlin.math.cos(angle)).toFloat(), center.y + (r * kotlin.math.sin(angle)).toFloat()),
+                    strokeWidth = 2f
+                )
+            }
+            // sweep dot
+            drawCircle(HudGreen, radius = 5f, center = Offset(center.x + r, center.y))
+        }
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -121,13 +178,16 @@ fun HudScreen() {
             // Top status row
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 HudPanelBox {
-                    Text("SYS STATUS: ONLINE ●", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("SYS STATUS: ONLINE ", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(HudGreen.copy(alpha = blink)))
+                    }
                     Text("ENCRYPTION: AES-256 | ACTIVE", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 }
                 HudPanelBox {
                     Text("TIME: $clock", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                     Text(
-                        if (uplink) "UPLINK: STABLE" else "UPLINK: OFFLINE",
+                        if (uplink) "UPLINK: STABLE ${if (netType.isNotBlank()) "($netType)" else ""}" else "UPLINK: OFFLINE",
                         color = if (uplink) HudGreen else Color(0xFFFF5252),
                         fontFamily = FontFamily.Monospace, fontSize = 11.sp
                     )
@@ -171,9 +231,23 @@ fun HudScreen() {
                     color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp
                 )
                 Text(
-                    "PROCESS: devbox_core | RUNNING",
+                    "PROCESS: devbox_core (PID $myPid) | RUNNING",
                     color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 12.sp
                 )
+                Text(
+                    "NETWORK NODES: $netNodes LINKED",
+                    color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp
+                )
+            }
+
+            // Live terminal feed
+            if (liveLog.isNotEmpty()) {
+                HudPanelBox(Modifier.fillMaxWidth()) {
+                    Text("LIVE FEED:", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                    liveLog.forEach { line ->
+                        Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                    }
+                }
             }
 
             // Access bar
@@ -284,6 +358,22 @@ private fun isOnline(context: Context): Boolean = try {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     cm.activeNetwork != null
 } catch (_: Exception) { false }
+
+private fun networkType(context: Context): String = try {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+    when {
+        caps == null -> ""
+        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "WiFi"
+        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "Mobile"
+        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+        else -> ""
+    }
+} catch (_: Exception) { "" }
+
+private fun upInterfaces(): Int = try {
+    NetworkInterface.getNetworkInterfaces().toList().count { it.isUp && !it.isLoopback }
+} catch (_: Exception) { 0 }
 
 private fun deviceIp(): String = try {
     NetworkInterface.getNetworkInterfaces().toList()
