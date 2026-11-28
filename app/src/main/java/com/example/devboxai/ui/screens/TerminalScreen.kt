@@ -60,7 +60,7 @@ fun TerminalScreen() {
     var input by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var workDirPath by rememberSaveable { mutableStateOf(context.filesDir.absolutePath) }
-    val workDir: File get() = File(workDirPath)
+    val workDir = File(workDirPath)
     var lines by rememberSaveable(stateSaver = termLineSaver) {
         mutableStateOf(
             listOf(
