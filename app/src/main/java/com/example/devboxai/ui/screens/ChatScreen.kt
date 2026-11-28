@@ -39,7 +39,8 @@ fun ChatScreen() {
     val scope = rememberCoroutineScope()
     val tts = remember { TtsHelper(context) }
 
-    val conversationId = remember { engine.newConversationId() }
+    // Saveable so switching pages doesn't start a blank chat (old messages stay)
+    var conversationId by rememberSaveable { mutableStateOf(engine.newConversationId()) }
     var input by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val messages by app.db.chatDao().messages(conversationId).collectAsState(initial = emptyList())

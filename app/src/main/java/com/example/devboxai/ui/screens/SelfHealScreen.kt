@@ -45,7 +45,7 @@ fun SelfHealScreen() {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
                 Text("Health check", style = MaterialTheme.typography.titleSmall)
-                Button(onClick = { scope.launch { status = "Checking…"; health = hc.check(); status = if (health!!.healthy) "✓ OK" else "⚠ Issues" } }) { Text("Run check") }
+                Button(onClick = { scope.launch { status = "Checking…"; try { val r = hc.check(); health = r; status = if (r.healthy) "✓ OK" else "⚠ Issues" } catch (e: Exception) { status = "✗ Check fail: ${e.message}" } } }) { Text("Run check") }
                 health?.let { r ->
                     Text(if (r.healthy) "✓ OK" else "Issues: " + r.issues.joinToString(", ") { it.name }, style = MaterialTheme.typography.bodySmall)
                 }
