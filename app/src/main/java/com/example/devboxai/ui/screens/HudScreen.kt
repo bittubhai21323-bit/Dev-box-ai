@@ -140,7 +140,10 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
                     .format(memUsedGb, rxMb, txMb)
                 liveLog = (liveLog + line).takeLast(5)
             }
-          } catch (_: Throwable) { /* one bad tick must never kill the HUD */ }
+          } catch (t: Throwable) {
+              // Surface the error on screen instead of crashing
+              liveLog = (liveLog + "> ⚠ ${t.javaClass.simpleName}: ${t.message}").takeLast(5)
+          }
             delay(1000)
         }
     }

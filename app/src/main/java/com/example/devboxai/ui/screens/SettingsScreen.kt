@@ -99,5 +99,33 @@ fun SettingsScreen() {
             Text("Download: $progress%", style = MaterialTheme.typography.bodySmall)
         }
         Text(updateStatus, style = MaterialTheme.typography.bodySmall)
+
+        HorizontalDivider()
+        Text("Crash Reports", style = MaterialTheme.typography.titleSmall)
+        var crashText by remember { mutableStateOf<String?>(null) }
+        OutlinedButton(onClick = {
+            val dirs = listOfNotNull(
+                java.io.File(ctx.filesDir, "crashes"),
+                ctx.getExternalFilesDir(null)?.let { java.io.File(it, "crashes") }
+            )
+            val files = dirs.flatMap { d -> d.listFiles()?.toList() ?: emptyList() }
+                .sortedByDescending { it.lastModified() }
+            crashText = if (files.isEmpty()) "Koi crash report nahi hai ✓"
+            else files.take(3).joinToString("\n\n══════════\n\n") { f ->
+                "📄 ${f.name}\n" + try { f.readText().take(3000) } catch (_: Exception) { "(padh nahi paya)" }
+            }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Crash reports dekho") }
+        if (crashText != null) {
+            AlertDialog(
+                onDismissRequest = { crashText = null },
+                title = { Text("Crash Reports") },
+                text = {
+                    Box(Modifier.fillMaxWidth().heightIn(max = 450.dp).verticalScroll(rememberScrollState())) {
+                        Text(crashText!!, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { crashText = null }) { Text("Band karo") } }
+            )
+        }
     }
 }
