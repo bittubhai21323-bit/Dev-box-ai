@@ -9,6 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.devboxai.SettingsStore
+import com.example.devboxai.update.UpdateManager
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen() {
@@ -48,5 +50,54 @@ fun SettingsScreen() {
 
         Button(onClick = { store.openAiKey = openAi; store.githubToken = gh; store.preferredLang = lang; store.personality = personality; saved = true }) { Text("Save") }
         if (saved) Text("Saved ✓", color = MaterialTheme.colorScheme.primary)
+
+        HorizontalDivider()
+        Text("App Update", style = MaterialTheme.typography.titleSmall)
+        val scope = rememberCoroutineScope()
+        val updater = remember { UpdateManager(ctx) }
+        var updateStatus by remember { mutableStateOf("Version ${updater.currentVersionName()}") }
+        var updateUrl by remember { mutableStateOf("") }
+        var updateStamp by remember { mutableStateOf("") }
+        var downloading by remember { mutableStateOf(false) }
+        var progress by remember { mutableStateOf(0) }
+
+        OutlinedButton(onClick = {
+            updateStatus = "Check kar raha hoon..."
+            scope.launch {
+                val info = updater.checkFromGitHub()
+                if (info.available) {
+                    updateUrl = info.apkUrl
+                    updateStamp = info.changelog.removePrefix("Stamp: ")
+                    updateStatus = "⬆ Naya update hai!"
+                } else {
+                    updateStatus = "✓ App up-to-date hai"
+                }
+            }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Update check karo") }
+
+        if (updateUrl.isNotBlank() && !downloading) {
+            Button(onClick = {
+                if (!updater.canInstallPackages()) {
+                    updater.requestInstallPermission()
+                    updateStatus = "Pehle 'Install unknown apps' ki permission do, phir dobara dabao"
+                } else {
+                    downloading = true; progress = 0
+                    updateStatus = "Download ho raha hai..."
+                    scope.launch {
+                        val file = updater.downloadApk(updateUrl) { p -> progress = p }
+                        downloading = false
+                        if (file != null) {
+                            updater.markInstalled(updateStamp)
+                            updateStatus = if (updater.installApk(file)) "Install ho raha hai..." else "Install fail — dobara try karo"
+                        } else updateStatus = "Download fail — internet check karo"
+                    }
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Update install karo") }
+        }
+        if (downloading) {
+            LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
+            Text("Download: $progress%", style = MaterialTheme.typography.bodySmall)
+        }
+        Text(updateStatus, style = MaterialTheme.typography.bodySmall)
     }
 }

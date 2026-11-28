@@ -26,6 +26,63 @@ class UpdateManager(private val context: Context) {
         val mandatory: Boolean = false
     )
 
+    companion object {
+        private const val RELEASE_API =
+            "https://api.github.com/repos/bittubhai21323-bit/Dev-box-ai/releases/tags/devbox-v11-debug"
+        private const val PREF_STAMP = "installed_asset_stamp"
+    }
+
+    /**
+     * Checks the GitHub release for a newer APK. The release asset is replaced
+     * on every build, so its "updated_at" stamp identifies the build.
+     * On the very first check the current stamp is stored (the installed APK
+     * is treated as current). Call markInstalled() right before installing
+     * a downloaded update so the new version does not re-report it.
+     */
+    suspend fun checkFromGitHub(): UpdateInfo = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url(RELEASE_API)
+                .header("Accept", "application/vnd.github+json").build()
+            OkHttpClient().newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return@withContext UpdateInfo(false)
+                val body = res.body?.string() ?: return@withContext UpdateInfo(false)
+                val json = org.json.JSONObject(body)
+                val assets = json.optJSONArray("assets") ?: return@withContext UpdateInfo(false)
+                var stamp = ""
+                var url = ""
+                for (i in 0 until assets.length()) {
+                    val a = assets.optJSONObject(i) ?: continue
+                    if (a.optString("name") == "app-debug.apk") {
+                        stamp = a.optString("updated_at")
+                        url = a.optString("browser_download_url")
+                        break
+                    }
+                }
+                if (stamp.isBlank() || url.isBlank()) return@withContext UpdateInfo(false)
+                val prefs = context.getSharedPreferences("devbox_update", Context.MODE_PRIVATE)
+                val stored = prefs.getString(PREF_STAMP, null)
+                if (stored == null) {
+                    prefs.edit().putString(PREF_STAMP, stamp).apply()
+                    return@withContext UpdateInfo(false, apkUrl = url)
+                }
+                UpdateInfo(
+                    available = stored != stamp,
+                    versionName = "naya build",
+                    apkUrl = url,
+                    changelog = "Stamp: $stamp"
+                )
+            }
+        } catch (e: Exception) {
+            Log.w("UpdateManager", "GitHub check failed", e)
+            UpdateInfo(false)
+        }
+    }
+
+    fun markInstalled(stamp: String) {
+        context.getSharedPreferences("devbox_update", Context.MODE_PRIVATE)
+            .edit().putString(PREF_STAMP, stamp).apply()
+    }
+
     fun checkFromRemoteConfig(
         latestCode: Int, latestName: String, apkUrl: String, changelog: String, mandatory: Boolean
     ): UpdateInfo {

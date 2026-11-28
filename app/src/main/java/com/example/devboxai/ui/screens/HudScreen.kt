@@ -89,8 +89,21 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
     var scanProgress by remember { mutableStateOf(-1f) } // -1 = idle
     var scanReport by remember { mutableStateOf("") }
     var bootLines by remember { mutableStateOf(listOf<String>()) }
+    var updateAvailable by remember { mutableStateOf(false) }
+    var updateUrl by remember { mutableStateOf("") }
+    var updateStamp by remember { mutableStateOf("") }
+    var updateProgress by remember { mutableStateOf(-1) }
 
     LaunchedEffect(Unit) {
+        // Silent update check on launch
+        launch {
+            val info = com.example.devboxai.update.UpdateManager(context).checkFromGitHub()
+            if (info.available) {
+                updateAvailable = true
+                updateUrl = info.apkUrl
+                updateStamp = info.changelog.removePrefix("Stamp: ")
+            }
+        }
         val lines = listOf(
             "> INITIATING DEVBOX_AI_CORE...",
             "> LOADING MODULES: net_scanner, crypto_layer, sys_monitor...",
@@ -191,6 +204,44 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
                         color = if (uplink) HudGreen else Color(0xFFFF5252),
                         fontFamily = FontFamily.Monospace, fontSize = 11.sp
                     )
+                }
+            }
+
+            // Update banner (appears when a newer build is on GitHub)
+            if (updateAvailable) {
+                HudPanelBox(Modifier.fillMaxWidth()) {
+                    Text(
+                        "⬆ NAYA UPDATE HAI!",
+                        color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 13.sp
+                    )
+                    if (updateProgress in 0..100) {
+                        LinearProgressIndicator(
+                            progress = { updateProgress / 100f },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            color = HudGreen
+                        )
+                        Text("Download: $updateProgress%", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                    } else {
+                        Button(
+                            onClick = {
+                                val updater = com.example.devboxai.update.UpdateManager(context)
+                                if (!updater.canInstallPackages()) {
+                                    updater.requestInstallPermission()
+                                } else {
+                                    updateProgress = 0
+                                    scope.launch {
+                                        val file = updater.downloadApk(updateUrl) { p -> updateProgress = p }
+                                        if (file != null) {
+                                            updater.markInstalled(updateStamp)
+                                            updater.installApk(file)
+                                        }
+                                        updateProgress = -1
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = HudCyan, contentColor = Color.Black)
+                        ) { Text("UPDATE KARO", fontFamily = FontFamily.Monospace) }
+                    }
                 }
             }
 
