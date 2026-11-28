@@ -175,6 +175,17 @@ object WebScanner {
                 if (Regex("""<!--[^>]*(password|secret|api[_-]?key|token)""").containsMatchIn(lower)) {
                     findings += "Page ke HTML comment me password/secret jaisi cheez likhi hai — sabko dikh sakti hai"
                 }
+                val extScripts = Regex("""<script[^>]+src\s*=\s*["']https?://([^/"']+)""").findAll(lower)
+                    .map { it.groupValues[1] }.distinct().take(8).toList()
+                if (extScripts.isNotEmpty()) sb.append("Bahar ki script sites: ${extScripts.joinToString(", ")}\n")
+                val evals = Regex("""\beval\s*\(""").findAll(lower).count()
+                if (evals > 0) findings += "Page me eval() $evals baar use hua hai — code injection ka risk badhta hai"
+            }
+            for (cookie in setCookies) {
+                val name = cookie.substringBefore("=").trim()
+                if (!cookie.contains("SameSite", ignoreCase = true)) {
+                    findings += "Cookie '$name' par SameSite nahi — dusri site se request bhej kar CSRF ho sakta hai"
+                }
             }
 
             // ---- Deep scan ----
@@ -214,7 +225,11 @@ object WebScanner {
             val fmt = SimpleDateFormat("dd MMM yyyy", Locale.ENGLISH)
             val issuer = cert.issuerX500Principal.name
                 .split(",").firstOrNull { it.trim().startsWith("O=") }?.trim()?.removePrefix("O=") ?: issuerShort(cert)
-            "🔒 SSL: $issuer\nCertificate valid till: ${fmt.format(cert.notAfter)}\n"
+            val sans = try {
+                cert.subjectAlternativeNames?.mapNotNull { it.getOrNull(1)?.toString() }?.take(8) ?: emptyList()
+            } catch (_: Exception) { emptyList() }
+            val sanLine = if (sans.isNotEmpty()) "Certificate wale domains: ${sans.joinToString(", ")}\n" else ""
+            "🔒 SSL: $issuer\nCertificate valid till: ${fmt.format(cert.notAfter)}\n$sanLine"
         } catch (_: Exception) {
             null
         }
@@ -418,6 +433,121 @@ object WebScanner {
                 val dis = txt.lines().filter { it.trim().startsWith("Disallow:", ignoreCase = true) }
                     .map { it.substringAfter(":").trim() }.filter { it.isNotBlank() && it != "/" }
                 if (dis.isNotEmpty()) sb.append("robots.txt me chhupaye raste: ${dis.take(8).joinToString(", ")}\n")
+            }
+        } catch (_: Exception) { }
+
+        // More ports + service banners
+        val morePorts = listOf(
+            110 to "POP3", 143 to "IMAP", 2375 to "Docker API", 5984 to "CouchDB",
+            5900 to "VNC", 8000 to "HTTP-8000", 9000 to "HTTP-9000",
+            9200 to "Elasticsearch", 11211 to "Memcached"
+        )
+        for ((port, name) in morePorts) {
+            try {
+                java.net.Socket().use { s ->
+                    s.connect(java.net.InetSocketAddress(host, port), 700)
+                    sb.append("Khula port: $port ($name)\n")
+                    if (port in listOf(2375, 9200, 11211, 5984, 5900)) {
+                        findings += "$name port $port khula hai — bina password ke andar ka data/control mil sakta hai"
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        // SSH/FTP banner
+        for ((port, name) in listOf(22 to "SSH", 21 to "FTP")) {
+            try {
+                java.net.Socket().use { s ->
+                    s.connect(java.net.InetSocketAddress(host, port), 1500)
+                    s.soTimeout = 1500
+                    val banner = s.getInputStream().bufferedReader().readLine()?.take(60)
+                    if (!banner.isNullOrBlank()) sb.append("$name banner: $banner\n")
+                }
+            } catch (_: Exception) { }
+        }
+        // Docker / Elasticsearch without password?
+        for ((port, path, name) in listOf(Triple(2375, "/version", "Docker"), Triple(9200, "/", "Elasticsearch"))) {
+            try {
+                val req = Request.Builder().url("http://$host:$port$path")
+                    .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                client.newCall(req).execute().use { res ->
+                    if (res.code == 200) findings += "$name bina password ke khula hai (port $port) — pura control/data mil sakta hai"
+                }
+            } catch (_: Exception) { }
+        }
+
+        // Backup / config files
+        val files = listOf(
+            "/backup.sql" to "Database backup file khuli hai — pura data mil sakta hai",
+            "/db.sql" to "Database file khuli hai",
+            "/dump.sql" to "Database dump khula hai",
+            "/.env.bak" to "Purani .env file khuli hai — keys leak ho sakti hai",
+            "/wp-config.php.bak" to "WordPress config backup khula hai — DB password mil sakta hai",
+            "/.git/config" to "Git config khula hai — repo ki jaankari leak hoti hai",
+            "/composer.json" to "composer.json khula hai — use hue package dikhte hai",
+            "/package.json" to "package.json khula hai — use hue package dikhte hai",
+            "/.svn/entries" to "SVN folder khula hai — source code mil sakta hai"
+        )
+        for ((path, risk) in files) {
+            try {
+                val req = Request.Builder().url(base + path).head()
+                    .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                client.newCall(req).execute().use { res ->
+                    if (res.code == 200) {
+                        sb.append("⚠ $path → 200 (khula hai)\n")
+                        findings += "$path khula hai — $risk"
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+
+        // API docs / endpoints
+        for (path in listOf("/api", "/api/docs", "/swagger", "/swagger-ui.html", "/openapi.json", "/graphql", "/.well-known/openid-configuration")) {
+            try {
+                val req = Request.Builder().url(base + path).head()
+                    .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                client.newCall(req).execute().use { res ->
+                    if (res.code == 200) sb.append("🔌 API mila: $path\n")
+                }
+            } catch (_: Exception) { }
+        }
+
+        // WordPress deep: version + user list
+        try {
+            val req = Request.Builder().url("$base/readme.html")
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                val txt = res.body?.string() ?: ""
+                val ver = Regex("""Version (\d+\.\d+(?:\.\d+)?)""").find(txt)?.groupValues?.getOrNull(1)
+                if (ver != null) {
+                    sb.append("WordPress version: $ver\n")
+                    findings += "WordPress version $ver dikh raha hai — purana hai to uske jaane-maane bugs use ho sakte hai"
+                }
+            }
+        } catch (_: Exception) { }
+        try {
+            val req = Request.Builder().url("$base/wp-json/wp/v2/users")
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                val txt = res.body?.string() ?: ""
+                if (res.code == 200 && txt.contains("\"slug\"")) {
+                    val users = Regex(""""slug"\s*:\s*"([^"]+)"""").findAll(txt).map { it.groupValues[1] }.take(5).toList()
+                    if (users.isNotEmpty()) {
+                        sb.append("WordPress users: ${users.joinToString(", ")}\n")
+                        findings += "WordPress user list khuli hai (${users.joinToString(", ")}) — login naam mil gaya, password guess karna asaan hota hai"
+                    }
+                }
+            }
+        } catch (_: Exception) { }
+
+        // Error page leaks version/stack?
+        try {
+            val req = Request.Builder().url("$base/devbox-test-404-${System.currentTimeMillis() % 100000}")
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                val txt = (res.body?.string() ?: "").lowercase()
+                val leaks = listOf("traceback", "stack trace", "php/", "apache/", "nginx/", "fatal error", "sql syntax")
+                    .filter { txt.contains(it) }
+                if (leaks.isNotEmpty()) findings += "Error page andar ki jaankari dikha raha hai (${leaks.joinToString(", ")}) — hacker ko rasta milta hai"
             }
         } catch (_: Exception) { }
 
