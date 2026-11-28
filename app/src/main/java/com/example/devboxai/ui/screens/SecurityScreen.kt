@@ -155,13 +155,21 @@ private fun LogsTab(app: DevBoxApp) {
 private fun RootOpsTab(context: android.content.Context) {
     var pkg by remember { mutableStateOf("com.example.package") }
     var out by remember { mutableStateOf("") }
+    var rootStatus by remember { mutableStateOf("Root check ho raha hai…") }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { rootStatus = RootProcessManager.checkRoot(context) }
+    fun runOp(cmd: String, okText: String) {
+        out = "Chal raha hai…"
+        scope.launch { out = RootProcessManager.runRoot(context, cmd, okText) }
+    }
     Column(Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState())) {
         Text("⚠ Root required (Termux + su)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Text(rootStatus, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         OutlinedTextField(value = pkg, onValueChange = { pkg = it }, label = { Text("Package") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { RootProcessManager.killApp(context, pkg); out = "kill sent" }, modifier = Modifier.fillMaxWidth()) { Text("Kill") }
-        Button(onClick = { RootProcessManager.freezeApp(context, pkg); out = "SIGSTOP" }, modifier = Modifier.fillMaxWidth()) { Text("Freeze") }
-        Button(onClick = { RootProcessManager.unfreezeApp(context, pkg); out = "SIGCONT" }, modifier = Modifier.fillMaxWidth()) { Text("Unfreeze") }
-        Button(onClick = { RootProcessManager.deprioritize(context, pkg); out = "renice 19" }, modifier = Modifier.fillMaxWidth()) { Text("Deprioritize CPU") }
+        Button(onClick = { runOp("pkill -9 -f $pkg || true", "✓ Kill ho gaya: $pkg") }, modifier = Modifier.fillMaxWidth()) { Text("Kill") }
+        Button(onClick = { runOp("pkill -STOP -f $pkg || true", "✓ Freeze ho gaya: $pkg") }, modifier = Modifier.fillMaxWidth()) { Text("Freeze") }
+        Button(onClick = { runOp("pkill -CONT -f $pkg || true", "✓ Unfreeze ho gaya: $pkg") }, modifier = Modifier.fillMaxWidth()) { Text("Unfreeze") }
+        Button(onClick = { runOp("renice 19 -p \$(pidof $pkg) 2>/dev/null", "✓ CPU priority kam ho gayi: $pkg") }, modifier = Modifier.fillMaxWidth()) { Text("Deprioritize CPU") }
         Text(out, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
     }
 }
