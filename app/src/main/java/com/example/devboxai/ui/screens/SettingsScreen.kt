@@ -17,19 +17,37 @@ import kotlinx.coroutines.launch
 fun SettingsScreen() {
     val ctx = LocalContext.current
     val store = remember { SettingsStore(ctx) }
-    var openAi by remember { mutableStateOf(store.openAiKey) }
-    var gh by remember { mutableStateOf(store.githubToken) }
-    var lang by remember { mutableStateOf(store.preferredLang) }
-    var personality by remember { mutableStateOf(store.personality) }
+    var openAi by rememberSaveable { mutableStateOf(store.openAiKey) }
+    var gh by rememberSaveable { mutableStateOf(store.githubToken) }
+    var lang by rememberSaveable { mutableStateOf(store.preferredLang) }
+    var personality by rememberSaveable { mutableStateOf(store.personality) }
     var saved by rememberSaveable { mutableStateOf(false) }
+    var showSecrets by rememberSaveable { mutableStateOf(false) }
 
     val langs = listOf("" to "Auto-detect", "hi" to "हिन्दी", "en" to "English", "es" to "Español", "fr" to "Français", "ar" to "العربية", "zh" to "中文", "ja" to "日本語")
     val personalities = listOf("boss" to "Boss", "friend" to "Friend", "professional" to "Pro", "minimal" to "Minimal")
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall)
-        OutlinedTextField(value = openAi, onValueChange = { openAi = it; saved = false }, label = { Text("Gemini API key (free: aistudio.google.com)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = gh, onValueChange = { gh = it; saved = false }, label = { Text("GitHub token") }, modifier = Modifier.fillMaxWidth())
+        // Key/token screen par saaf dikhte the — screenshot se leak ho sakte hai, isliye chhupa kar rakho
+        OutlinedTextField(
+            value = openAi, onValueChange = { openAi = it; saved = false },
+            label = { Text("Gemini API key (free: aistudio.google.com)") },
+            visualTransformation = if (showSecrets) androidx.compose.ui.text.input.VisualTransformation.None
+                else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            singleLine = true, modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = gh, onValueChange = { gh = it; saved = false },
+            label = { Text("GitHub token") },
+            visualTransformation = if (showSecrets) androidx.compose.ui.text.input.VisualTransformation.None
+                else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            singleLine = true, modifier = Modifier.fillMaxWidth()
+        )
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Checkbox(checked = showSecrets, onCheckedChange = { showSecrets = it })
+            Text("Key/Token dikhao", style = MaterialTheme.typography.bodySmall)
+        }
 
         Text("Voice language", style = MaterialTheme.typography.titleSmall)
         var langExpanded by rememberSaveable { mutableStateOf(false) }
@@ -49,7 +67,8 @@ fun SettingsScreen() {
             }
         }
 
-        Button(onClick = { store.openAiKey = openAi; store.githubToken = gh; store.preferredLang = lang; store.personality = personality; saved = true }) { Text("Save") }
+        // trim: paste ki hui key ke aakhir me space/newline aa jata hai, usse key fail hoti thi
+        Button(onClick = { store.openAiKey = openAi.trim(); store.githubToken = gh.trim(); store.preferredLang = lang; store.personality = personality; openAi = openAi.trim(); gh = gh.trim(); saved = true }) { Text("Save") }
         if (saved) Text("Saved ✓", color = MaterialTheme.colorScheme.primary)
 
         HorizontalDivider()
