@@ -81,6 +81,25 @@ fun FirebaseSetupScreen(onDone: () -> Unit) {
 
         if (FirebaseConfigStore(context).isConfigured()) {
             Spacer(Modifier.height(12.dp))
+            // Server par data save (tasks, journal, reminders, routines, blocked apps + backup file)
+            val syncScope = androidx.compose.runtime.rememberCoroutineScope()
+            var syncing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            var syncMsg by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+            val lastSync = com.example.devboxai.firebase.CloudSync.lastSyncTime(context)
+            Button(onClick = {
+                syncing = true; syncMsg = "Server par save ho raha hai…"
+                syncScope.launch {
+                    syncMsg = com.example.devboxai.firebase.CloudSync.syncNow(context)
+                    syncing = false
+                }
+            }, enabled = !syncing, modifier = Modifier.fillMaxWidth()) { Text(if (syncing) "Save ho raha hai…" else "☁ Server par data save karo") }
+            if (lastSync > 0) Text(
+                "Aakhri server save: " + java.text.SimpleDateFormat("dd MMM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(lastSync)),
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (syncMsg.isNotBlank()) Text(syncMsg, style = MaterialTheme.typography.bodySmall)
+            Text("Auto-backup ke saath data khud bhi server par save hota rahega.", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = { FirebaseBootstrap.reset(context); message = "Cleared"; isError = false }, modifier = Modifier.fillMaxWidth()) { Text("Clear saved config") }
         }
     }

@@ -16,7 +16,9 @@ class AutoBackupWorker(context: Context, params: WorkerParameters) : Worker(cont
             if (store.backupPassword.isBlank()) store.backupPassword = pwd
             val r = runBlocking { BackupManager(applicationContext).createBackup(pwd) }
             if (r.ok) {
-                NotificationHelper.show(applicationContext, "Auto-backup", r.message)
+                // Backup ke saath data server par bhi save karo (best effort)
+                val syncMsg = runBlocking { com.example.devboxai.firebase.CloudSync.syncNow(applicationContext) }
+                NotificationHelper.show(applicationContext, "Auto-backup", r.message + " | " + syncMsg)
                 Result.success()
             } else Result.retry()
         } catch (_: Exception) { Result.retry() }
