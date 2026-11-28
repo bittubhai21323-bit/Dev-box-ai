@@ -110,10 +110,15 @@ fun SettingsScreen() {
             )
             val files = dirs.flatMap { d -> d.listFiles()?.toList() ?: emptyList() }
                 .sortedByDescending { it.lastModified() }
-            crashText = if (files.isEmpty()) "Koi crash report nahi hai ✓"
+            val heartbeat = try {
+                val hb = java.io.File(ctx.filesDir, "hud_heartbeat.log")
+                if (hb.exists()) "\n\n══ HUD HEARTBEAT (aakhri lines) ══\n" + hb.readLines().takeLast(25).joinToString("\n")
+                else ""
+            } catch (_: Exception) { "" }
+            crashText = (if (files.isEmpty()) "Koi crash report nahi hai ✓"
             else files.take(3).joinToString("\n\n══════════\n\n") { f ->
                 "📄 ${f.name}\n" + try { f.readText().take(3000) } catch (_: Exception) { "(padh nahi paya)" }
-            }
+            }) + heartbeat
         }, modifier = Modifier.fillMaxWidth()) { Text("Crash reports dekho") }
         if (crashText != null) {
             AlertDialog(

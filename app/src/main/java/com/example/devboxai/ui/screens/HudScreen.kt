@@ -134,6 +134,17 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
             txMb = TrafficStats.getTotalTxBytes().coerceAtLeast(0) / (1024.0 * 1024)
             cpuLoad = withContext(Dispatchers.IO) { cpuUsage() }
             tick++
+            // Heartbeat log: if the system kills the app, the last lines show when/why
+            try {
+                val hb = File(context.filesDir, "hud_heartbeat.log")
+                val rt = Runtime.getRuntime()
+                val freeMb = (rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())) / (1024 * 1024)
+                hb.appendText("$clock tick=$tick cpu=${(cpuLoad * 100).toInt()}% heapFree=${freeMb}MB\n")
+                if (hb.length() > 20_000) {
+                    val tail = hb.readLines().takeLast(60).joinToString("\n")
+                    hb.writeText(tail + "\n")
+                }
+            } catch (_: Throwable) {}
             if (tick % 3 == 0) {
                 val stamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 val line = "> [$stamp] CPU ${(cpuLoad * 100).toInt()}% • MEM %.1fGB • RX %.1fMB • TX %.1fMB"
