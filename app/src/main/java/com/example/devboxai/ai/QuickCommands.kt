@@ -64,6 +64,13 @@ object QuickCommands {
                 /torch on / /torch off — flashlight
                 /joke — ek joke suno
                 /quote — ek achhi baat
+                /board — motherboard/chipset jaankari
+                /cpu — CPU cores aur usage
+                /temp — phone ka temperature
+                /uptime — phone kab se chal raha hai
+                /kernel — kernel jaankari
+                /process — chal rahe processes (Termux se)
+                /system — poori system report
             """.trimIndent()
 
             "mausam", "weather" -> {
@@ -158,9 +165,101 @@ object QuickCommands {
             "joke" -> jokes.random()
             "quote", "baat" -> quotes.random()
 
+            "board", "motherboard" -> boardInfo()
+            "cpu" -> cpuInfo()
+            "temp", "temperature" -> tempInfo()
+            "uptime" -> uptimeInfo()
+            "kernel" -> kernelInfo()
+
+            "process", "processes" -> {
+                if (context == null) "Process jaankari nahi mil payi"
+                else if (!com.example.devboxai.termux.TermuxHelper.isTermuxInstalled(context))
+                    "Process list ke liye Termux app chahiye (F-Droid se lagao)"
+                else {
+                    val result = com.example.devboxai.termux.TermuxHelper.runAndWait(
+                        context,
+                        "top -b -n1 -o PID,%CPU,%MEM,NAME 2>/dev/null | head -25",
+                        timeoutMs = 15_000
+                    )
+                    val out = result?.stdout?.trim().orEmpty()
+                    if (out.isNotBlank()) "⚙️ Processes:\n$out"
+                    else "Process list nahi mili (Termux me 'allow-external-apps' on karo, ya root chahiye hoga)"
+                }
+            }
+
+            "system", "report" -> buildString {
+                appendLine("🖥️ DevBox System Report")
+                appendLine(boardInfo())
+                appendLine(cpuInfo())
+                appendLine(tempInfo())
+                appendLine(uptimeInfo())
+                append(kernelInfo())
+            }
+
             else -> null // unknown command -> let the AI server answer
         }
     }
+
+    private fun boardInfo(): String = buildString {
+        appendLine("🔌 Motherboard / Chipset:")
+        appendLine("Board: ${Build.BOARD}")
+        appendLine("Hardware: ${Build.HARDWARE}")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            appendLine("SoC: ${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL}")
+        }
+        appendLine("CPU cores: ${Runtime.getRuntime().availableProcessors()}")
+        append("CPU type: ${Build.SUPPORTED_ABIS.firstOrNull() ?: "?"}")
+    }
+
+    private suspend fun cpuInfo(): String = withContext(Dispatchers.IO) {
+        fun readStat(): LongArray? = try {
+            val line = java.io.File("/proc/stat").readLines().firstOrNull { it.startsWith("cpu ") }
+            line?.trim()?.split(Regex("\\s+"))?.drop(1)?.map { it.toLong() }?.toLongArray()
+        } catch (_: Exception) { null }
+
+        val cores = Runtime.getRuntime().availableProcessors()
+        val first = readStat() ?: return@withContext "⚙️ CPU cores: $cores (usage nahi mil paya)"
+        // small sample window for a live usage reading
+        Thread.sleep(300)
+        val second = readStat() ?: return@withContext "⚙️ CPU cores: $cores (usage nahi mil paya)"
+        val idle1 = first.getOrElse(3) { 0 } + first.getOrElse(4) { 0 }
+        val idle2 = second.getOrElse(3) { 0 } + second.getOrElse(4) { 0 }
+        val total1 = first.sum()
+        val total2 = second.sum()
+        val totalDiff = total2 - total1
+        val usage = if (totalDiff > 0) (100.0 * (totalDiff - (idle2 - idle1)) / totalDiff) else 0.0
+        return "⚙️ CPU: $cores cores, abhi usage %.1f%%".format(usage)
+    }
+
+    private fun tempInfo(): String {
+        val zones = try {
+            java.io.File("/sys/class/thermal").listFiles { f -> f.name.startsWith("thermal_zone") }
+                ?.sortedBy { it.name }
+                ?.mapNotNull { zone ->
+                    try {
+                        val type = java.io.File(zone, "type").readText().trim()
+                        val raw = java.io.File(zone, "temp").readText().trim().toLong()
+                        val celsius = if (raw > 1000) raw / 1000.0 else raw.toDouble()
+                        "$type: %.1f°C".format(celsius)
+                    } catch (_: Exception) { null }
+                }
+                .orEmpty()
+        } catch (_: Exception) { emptyList() }
+        return if (zones.isEmpty()) "🌡️ Temperature jaankari is phone par nahi milti"
+        else "🌡️ Temperature:\n" + zones.take(8).joinToString("\n")
+    }
+
+    private fun uptimeInfo(): String = try {
+        val seconds = java.io.File("/proc/uptime").readText().trim().split(" ")[0].toDouble().toLong()
+        val days = seconds / 86400
+        val hours = (seconds % 86400) / 3600
+        val mins = (seconds % 3600) / 60
+        "⏱️ Phone chal raha hai: ${days}d ${hours}h ${mins}m se"
+    } catch (_: Exception) { "Uptime nahi mil paya" }
+
+    private fun kernelInfo(): String = try {
+        "🐧 Kernel: " + java.io.File("/proc/version").readText().trim().take(120)
+    } catch (_: Exception) { "Kernel jaankari nahi mil payi" }
 }
 
 /** Tiny arithmetic evaluator: + - * / % parentheses, decimals, unary minus. */
