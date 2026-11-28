@@ -123,6 +123,23 @@ object WebScanner {
                     findings += "$header gayab hai ($label) — ${headerRisk(header)}"
                 }
             }
+            // Header quality checks
+            val csp = headers.entries.firstOrNull { it.key.equals("Content-Security-Policy", ignoreCase = true) }?.value ?: ""
+            if (csp.isNotBlank()) {
+                if (csp.contains("unsafe-inline")) findings += "CSP me 'unsafe-inline' hai — XSS rokne ki taakat kam ho jati hai"
+                if (csp.contains("unsafe-eval")) findings += "CSP me 'unsafe-eval' hai — eval wala code chal sakta hai"
+                if (Regex("""(?:script-src|default-src)\s+[^;]*\*""").containsMatchIn(csp)) findings += "CSP me wildcard (*) hai — kisi bhi site se script chal sakti hai"
+                if (!csp.contains("frame-ancestors")) findings += "CSP me frame-ancestors nahi — clickjacking ka risk hai"
+            }
+            val hsts = headers.entries.firstOrNull { it.key.equals("Strict-Transport-Security", ignoreCase = true) }?.value ?: ""
+            if (hsts.isNotBlank()) {
+                val maxAge = Regex("""max-age=(\d+)""").find(hsts)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0
+                if (maxAge < 31_536_000) findings += "HSTS ka time kam hai (max-age=$maxAge) — 1 saal (31536000) hona chahiye"
+                if (!hsts.contains("includeSubDomains", ignoreCase = true)) findings += "HSTS me includeSubDomains nahi — subdomain par HTTPS majboor nahi hai"
+            }
+            val refPol = headers.entries.firstOrNull { it.key.equals("Referrer-Policy", ignoreCase = true) }?.value ?: ""
+            if (refPol.equals("unsafe-url", ignoreCase = true)) findings += "Referrer-Policy 'unsafe-url' hai — pura URL dusri sites ko jata hai"
+
             val server = headers["Server"] ?: ""
             if (server.matches(Regex(".*\\d+\\.\\d+.*"))) {
                 findings += "Server ka version dikh raha hai ($server) — hacker ko pata chalta hai kaun sa software chal raha hai"
@@ -180,6 +197,22 @@ object WebScanner {
                 if (extScripts.isNotEmpty()) sb.append("Bahar ki script sites: ${extScripts.joinToString(", ")}\n")
                 val evals = Regex("""\beval\s*\(""").findAll(lower).count()
                 if (evals > 0) findings += "Page me eval() $evals baar use hua hai — code injection ka risk badhta hai"
+                // SRI: external scripts without integrity
+                val extScriptTags = Regex("""<script[^>]+src\s*=\s*["']https?://[^>]*>""").findAll(lower).map { it.value }.toList()
+                val noSri = extScriptTags.count { !it.contains("integrity") }
+                if (noSri > 0) findings += "$noSri bahar ki script bina SRI (integrity) ke hai — script badli jaye to pata nahi chalega"
+                // target=_blank without noopener
+                val blankLinks = Regex("""<a[^>]+target\s*=\s*["']_blank["'][^>]*>""").findAll(lower).map { it.value }.toList()
+                val noNoopener = blankLinks.count { !it.contains("noopener") }
+                if (noNoopener > 0) findings += "$noNoopener link naye tab me khulte hai bina rel=noopener ke — dusri site is page ko control kar sakti hai"
+                // iframes without sandbox
+                val iframes = Regex("""<iframe[^>]*>""").findAll(lower).map { it.value }.toList()
+                val noSandbox = iframes.count { !it.contains("sandbox") }
+                if (noSandbox > 0) sb.append("Page me $noSandbox iframe bina sandbox ke hai\n")
+                // Debug mode markers
+                val debugMarks = listOf("whoops, looks like something went wrong", "django debug", "debug = true", "laravel", "stack trace", "you're seeing this error because you have debug")
+                    .filter { lower.contains(it) }
+                if (debugMarks.isNotEmpty()) findings += "Debug mode ke nishan mile (${debugMarks.joinToString(", ")}) — andar ki galtiyan sabko dikh sakti hai"
             }
             for (cookie in setCookies) {
                 val name = cookie.substringBefore("=").trim()
@@ -261,12 +294,27 @@ object WebScanner {
             val ns = doh(host, "NS")
             if (ns.isNotEmpty()) sb.append("Nameserver: ${ns.joinToString(", ")}\n")
             val txt = doh(host, "TXT")
-            val spf = txt.any { it.contains("v=spf1") }
+            val spfRec = txt.firstOrNull { it.contains("v=spf1") }
+            val spf = spfRec != null
             if (mx.isNotEmpty() && !spf) findings += "SPF record nahi hai — koi bhi is domain se nakli email bhej sakta hai (spoofing)"
-            val dmarc = doh("_dmarc.$host", "TXT").any { it.contains("v=DMARC1") }
+            if (spfRec != null && spfRec.contains("+all")) findings += "SPF me '+all' hai — koi bhi server is domain se email bhej sakta hai, SPF bekaar hai"
+            val dmarcRec = doh("_dmarc.$host", "TXT").firstOrNull { it.contains("v=DMARC1") }
+            val dmarc = dmarcRec != null
             if (mx.isNotEmpty() && !dmarc) findings += "DMARC record nahi hai — email spoofing rokne ka system nahi hai"
+            if (dmarcRec != null && dmarcRec.contains("p=none")) findings += "DMARC policy 'p=none' hai — nakli email sirf report hoti hai, rukti nahi"
             if (spf) sb.append("✓ SPF hai\n")
             if (dmarc) sb.append("✓ DMARC hai\n")
+            // DNSSEC
+            try {
+                val req = Request.Builder()
+                    .url("https://cloudflare-dns.com/dns-query?name=$host&type=A")
+                    .header("Accept", "application/dns-json").build()
+                client.newCall(req).execute().use { res ->
+                    val body = res.body?.string() ?: ""
+                    if (body.contains("\"AD\":true") || body.contains("\"AD\": true")) sb.append("✓ DNSSEC hai (DNS jawab verified hai)\n")
+                    else sb.append("DNSSEC nahi hai\n")
+                }
+            } catch (_: Exception) { }
         } catch (_: Exception) { }
 
         // TLS protocol + cipher
@@ -279,6 +327,8 @@ object WebScanner {
                 if (conn.cipherSuite.contains("TLSv1.0") || conn.cipherSuite.contains("TLSv1.1")) {
                     findings += "Purana TLS protocol (${conn.cipherSuite}) — kamzor encryption"
                 }
+                val weakCipher = listOf("RC4", "3DES", "DES", "NULL", "EXPORT", "MD5").firstOrNull { conn.cipherSuite.contains(it, ignoreCase = true) }
+                if (weakCipher != null) findings += "Kamzor cipher ($weakCipher) use ho raha hai — encryption toda ja sakta hai"
                 conn.disconnect()
             } catch (_: Exception) { }
         }
@@ -683,6 +733,13 @@ object WebScanner {
             }
             if (cert.sigAlgName.contains("SHA1", ignoreCase = true)) {
                 out += "Certificate kamzor SHA1 signature use karta hai — purana aur asurakshit hai"
+            }
+            if (cert.issuerX500Principal == cert.subjectX500Principal) {
+                out += "Certificate self-signed hai — kisi bharosemand company ne nahi diya, browser warning dega"
+            }
+            val rsaKey = cert.publicKey as? java.security.interfaces.RSAPublicKey
+            if (rsaKey != null && rsaKey.modulus.bitLength() < 2048) {
+                out += "Certificate ki RSA key chhoti hai (${rsaKey.modulus.bitLength()} bit) — 2048 se kam kamzor hoti hai"
             }
             out
         } catch (_: Exception) {
