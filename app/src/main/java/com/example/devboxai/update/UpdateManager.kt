@@ -149,36 +149,20 @@ class UpdateManager(private val context: Context) {
     }
 
     fun installApk(apkFile: File): Boolean {
+        // Classic installer intent: opens the system install dialog directly.
+        // (PackageInstaller sessions need a user-confirmation intent to be
+        // launched from the result receiver, which silently stalled before.)
         return try {
             val uri: Uri = FileProvider.getUriForFile(
                 context, "${context.packageName}.fileprovider", apkFile
             )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                val installer = context.packageManager.packageInstaller
-                val sessionId = installer.createSession(
-                    PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-                )
-                installer.openSession(sessionId).use { s ->
-                    apkFile.inputStream().use { ins ->
-                        s.openWrite("base.apk", 0, apkFile.length()).use { os -> ins.copyTo(os) }
-                    }
-                    val intent = Intent(context, InstallResultReceiver::class.java)
-                    val pending = PendingIntent.getBroadcast(
-                        context, sessionId, intent,
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-                    )
-                    s.commit(pending.intentSender)
-                }
-                true
-            } else {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-                true
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+            context.startActivity(intent)
+            true
         } catch (e: Exception) { false }
     }
 
