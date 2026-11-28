@@ -186,18 +186,21 @@ fun HudScreen(
     )
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        // The poster photo itself, full screen
+        // The poster photo itself, full screen — dimmed so its printed (fake)
+        // values fade into the background and only the live panels read clearly
         if (bgBitmap != null) {
             Image(
                 bitmap = bgBitmap.asImageBitmap(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                alpha = 0.55f
             )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
         }
 
         // Top-left panel (over the poster's SYS STATUS panel)
-        HudPanelBox(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp).widthIn(max = 200.dp)) {
+        HudPanelBox(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp).widthIn(max = 215.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("SYS STATUS: ONLINE ", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 Box(Modifier.size(8.dp).clip(CircleShape).background(HudGreen.copy(alpha = blink)))
@@ -206,7 +209,7 @@ fun HudScreen(
         }
 
         // Top-right panel (over the poster's TIME panel)
-        HudPanelBox(Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 8.dp).widthIn(max = 200.dp)) {
+        HudPanelBox(Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 8.dp).widthIn(max = 215.dp)) {
             Text("TIME: $clock", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
             Text(
                 if (uplink) "UPLINK: STABLE ${if (netType.isNotBlank()) "($netType)" else ""}" else "UPLINK: OFFLINE",
@@ -219,7 +222,7 @@ fun HudScreen(
         }
 
         // SCAN status (near the ring, like the poster)
-        HudPanelBox(Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 150.dp).widthIn(max = 190.dp)) {
+        HudPanelBox(Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 175.dp).widthIn(max = 190.dp)) {
             Text(
                 when {
                     scanProgress < 0f -> "SCAN: READY"
@@ -451,14 +454,30 @@ private fun cpuUsage(): Float {
         val line = File("/proc/stat").readLines().firstOrNull { it.startsWith("cpu ") }
         line?.trim()?.split(Regex("\\s+"))?.drop(1)?.map { it.toLong() }?.toLongArray()
     } catch (_: Exception) { null }
-    val first = readStat() ?: return 0f
-    Thread.sleep(250)
-    val second = readStat() ?: return 0f
-    val idle1 = first.getOrElse(3) { 0 } + first.getOrElse(4) { 0 }
-    val idle2 = second.getOrElse(3) { 0 } + second.getOrElse(4) { 0 }
-    val totalDiff = second.sum() - first.sum()
-    if (totalDiff <= 0) return 0f
-    return ((totalDiff - (idle2 - idle1)).toFloat() / totalDiff).coerceIn(0f, 1f)
+    val first = readStat()
+    if (first != null && first.sum() > 0) {
+        Thread.sleep(250)
+        val second = readStat()
+        if (second != null) {
+            val idle1 = first.getOrElse(3) { 0 } + first.getOrElse(4) { 0 }
+            val idle2 = second.getOrElse(3) { 0 } + second.getOrElse(4) { 0 }
+            val totalDiff = second.sum() - first.sum()
+            if (totalDiff > 0) {
+                return ((totalDiff - (idle2 - idle1)).toFloat() / totalDiff).coerceIn(0f, 1f)
+            }
+        }
+    }
+    // Fallback (Android 10+ blocks /proc/stat on many phones): this app's own CPU time
+    return try {
+        val t1 = android.os.Process.getElapsedCpuTime()
+        val w1 = System.nanoTime()
+        Thread.sleep(250)
+        val t2 = android.os.Process.getElapsedCpuTime()
+        val w2 = System.nanoTime()
+        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        val wallMs = (w2 - w1) / 1_000_000.0
+        if (wallMs <= 0) 0f else (((t2 - t1) / wallMs) / cores).toFloat().coerceIn(0f, 1f)
+    } catch (_: Exception) { 0f }
 }
 
 private fun maxTempC(): Double {
