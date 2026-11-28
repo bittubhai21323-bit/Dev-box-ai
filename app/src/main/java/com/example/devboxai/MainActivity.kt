@@ -92,6 +92,9 @@ private fun Root() {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { nav.navigate("terminal") { launchSingleTop = true } }) {
+                        Icon(Icons.Default.Terminal, "Kali Terminal")
+                    }
                     IconButton(onClick = { nav.navigate("firebase_setup") { launchSingleTop = true } }) {
                         Icon(Icons.Default.Cloud, "Firebase")
                     }
@@ -118,7 +121,8 @@ private fun Root() {
         }
     ) { pad ->
         NavHost(nav, startDestination = "hud", modifier = Modifier.padding(pad)) {
-            composable("hud")          { HudScreen() }
+            composable("hud")          { HudScreen(onOpenTerminal = { nav.navigate("terminal") { launchSingleTop = true } }) }
+            composable("terminal")     { TerminalScreen() }
             composable("chat")         { ChatScreen() }
             composable("voice")        { VoiceControlScreen() }
             composable("security")     { SecurityScreen() }

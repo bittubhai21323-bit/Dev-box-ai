@@ -57,7 +57,7 @@ private val HudCyan = Color(0xFF00E5FF)
 private val HudPanel = Color(0xCC02140C)
 
 @Composable
-fun HudScreen() {
+fun HudScreen(onOpenTerminal: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -312,7 +312,7 @@ fun HudScreen() {
                     Text("[ START SCAN ]", color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
                 }
                 Button(
-                    onClick = { TermuxHelper.openTermux(context) },
+                    onClick = { onOpenTerminal() },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF062A35))
                 ) {
