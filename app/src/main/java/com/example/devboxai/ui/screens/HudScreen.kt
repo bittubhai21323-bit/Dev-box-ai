@@ -4,20 +4,18 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.TrafficStats
 import android.os.BatteryManager
 import android.os.Environment
 import android.os.StatFs
-import android.util.Base64
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,9 +27,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -56,9 +55,9 @@ private val HudCyan = Color(0xFF00E5FF)
 private val PatchBg = Color(0xF202140C)
 
 /**
- * Hacker HUD home screen: the poster photo is on top, exactly as it is.
- * Live values are written inside the photo's own panels (small dark patches
- * at the same spots, no separate boxes), so the photo itself looks alive.
+ * Hacker HUD home screen (no photo): all panels/text stay at the same spots
+ * as the reference poster, drawn directly on a black background with a
+ * rotating HUD ring in the centre.
  */
 @Composable
 fun HudScreen(
@@ -67,14 +66,6 @@ fun HudScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    val bgBitmap = remember {
-        try {
-            val b64 = context.assets.open("hud_bg.b64").bufferedReader().readText()
-            val bytes = Base64.decode(b64, Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        } catch (_: Exception) { null }
-    }
 
     var clock by remember { mutableStateOf("") }
     var uplink by remember { mutableStateOf(false) }
@@ -182,6 +173,11 @@ fun HudScreen(
         animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
         label = "blink"
     )
+    val rotation by transition.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
+        label = "ring"
+    )
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
         // Fit the 9:16 poster exactly (no crop, no stretch) so live text
@@ -194,12 +190,41 @@ fun HudScreen(
         val oy = (maxHeight - imgH) / 2
         val fs = { f: Float -> (imgW.value * f).sp }
 
-        if (bgBitmap != null) {
-            Image(
-                bitmap = bgBitmap.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier.offset(x = ox, y = oy).size(imgW, imgH),
-                contentScale = ContentScale.FillBounds
+        // Rotating HUD ring in the centre (where the poster's ring was)
+        Canvas(
+            Modifier.offset(x = ox + imgW * 0.075f, y = oy + imgH * 0.245f)
+                .size(imgW * 0.85f).rotate(rotation)
+        ) {
+            val r = size.minDimension / 2f
+            drawCircle(HudCyan.copy(alpha = 0.5f), radius = r, style = Stroke(2.5f))
+            drawCircle(HudGreen.copy(alpha = 0.4f), radius = r * 0.84f, style = Stroke(2f))
+            drawCircle(HudCyan.copy(alpha = 0.3f), radius = r * 0.66f, style = Stroke(1.5f))
+            for (i in 0 until 36) {
+                val angle = Math.toRadians((i * 10).toDouble())
+                val inner = if (i % 3 == 0) r * 0.90f else r * 0.95f
+                drawLine(
+                    HudGreen.copy(alpha = 0.6f),
+                    Offset(center.x + (inner * kotlin.math.cos(angle)).toFloat(), center.y + (inner * kotlin.math.sin(angle)).toFloat()),
+                    Offset(center.x + (r * kotlin.math.cos(angle)).toFloat(), center.y + (r * kotlin.math.sin(angle)).toFloat()),
+                    strokeWidth = 2f
+                )
+            }
+            drawCircle(HudGreen, radius = 6f, center = Offset(center.x + r, center.y))
+            drawCircle(HudCyan, radius = 4f, center = Offset(center.x - r * 0.84f, center.y))
+        }
+
+        // Title (where the poster's title bar was)
+        Column(
+            Modifier.offset(x = ox + imgW * 0.10f, y = oy + imgH * 0.125f).width(imgW * 0.80f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "DEVBOX AI", color = HudCyan, fontFamily = FontFamily.Monospace,
+                fontSize = fs(0.085f), fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
+            )
+            Text(
+                "HUD • HOME SCREEN • SECURE SESSION", color = HudGreen,
+                fontFamily = FontFamily.Monospace, fontSize = fs(0.026f), textAlign = TextAlign.Center
             )
         }
 
@@ -410,9 +435,10 @@ fun HudScreen(
 private fun Patch(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(PatchBg)
-            .padding(horizontal = 4.dp, vertical = 3.dp),
+            .border(1.dp, HudCyan.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 4.dp),
         content = content
     )
 }
