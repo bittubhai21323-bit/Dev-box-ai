@@ -38,7 +38,8 @@ class VoiceCommandManager(private val context: Context) {
     }
 
     fun listenAndExecute(onHistory: (String, String, String) -> Unit = { _, _, _ -> }) {
-        val helper = VoiceInputHelper(
+        lateinit var helper: VoiceInputHelper
+        helper = VoiceInputHelper(
             context,
             onResult = { raw ->
                 scope.launch {

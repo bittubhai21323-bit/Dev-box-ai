@@ -13,15 +13,15 @@ object RootProcessManager {
     fun unfreezeApp(context: Context, pkg: String): Boolean =
         TermuxHelper.run(context, "su -c 'pkill -CONT -f $pkg || true'")
     fun deprioritize(context: Context, pkg: String): Boolean =
-        TermuxHelper.run(context, "su -c 'renice 19 -p \\$(pidof $pkg) 2>/dev/null'")
+        TermuxHelper.run(context, "su -c 'renice 19 -p \$(pidof $pkg) 2>/dev/null'")
     fun prioritize(context: Context, pkg: String): Boolean =
-        TermuxHelper.run(context, "su -c 'renice -10 -p \\$(pidof $pkg) 2>/dev/null'")
+        TermuxHelper.run(context, "su -c 'renice -10 -p \$(pidof $pkg) 2>/dev/null'")
     fun limitCpu(context: Context, pkg: String, cores: Int): Boolean {
         val mask = (1 shl cores) - 1
         val hex = Integer.toHexString(mask)
         return TermuxHelper.run(context,
             "su -c 'echo $hex > /dev/cpuset/background/cpus 2>/dev/null; " +
-                "pid=\\$(pidof $pkg); if [ -n \"\\$pid\" ]; then echo \\$pid > /dev/cpuset/background/tasks; fi'")
+                "pid=\$(pidof $pkg); if [ -n \"\$pid\" ]; then echo \$pid > /dev/cpuset/background/tasks; fi'")
     }
     fun listTopProcesses(context: Context): Boolean =
         TermuxHelper.runWithResult(context, "su -c 'top -b -n1 -o %CPU | head -30'")

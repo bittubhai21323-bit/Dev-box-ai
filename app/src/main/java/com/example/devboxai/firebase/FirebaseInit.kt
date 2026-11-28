@@ -14,7 +14,7 @@ object FirebaseInit {
     val firestore: FirebaseFirestore?
         get() = app()?.let { FirebaseFirestore.getInstance(it) }
     val messaging: FirebaseMessaging?
-        get() = app()?.let { FirebaseMessaging.getInstance(it) }
+        get() = app()?.get(FirebaseMessaging::class.java)
 
     const val DOC_CONFIG = "devbox/config"
     const val COLL_COMMANDS = "devbox_commands"

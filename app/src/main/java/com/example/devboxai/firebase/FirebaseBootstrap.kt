@@ -43,8 +43,15 @@ object FirebaseBootstrap {
     }
 
     fun app(): FirebaseApp? {
-        return FirebaseApp.getApps(null).firstOrNull { it.name == APP_NAME }
-            ?: FirebaseApp.getApps(null).firstOrNull()
+        return try {
+            FirebaseApp.getInstance(APP_NAME)
+        } catch (_: IllegalStateException) {
+            try {
+                FirebaseApp.getInstance()
+            } catch (_: IllegalStateException) {
+                null
+            }
+        }
     }
 
     fun reset(context: Context) {

@@ -86,16 +86,16 @@ class UpdateManager(private val context: Context) {
             )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val installer = context.packageManager.packageInstaller
-                val session = installer.openSession(
+                val sessionId = installer.createSession(
                     PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
                 )
-                installer.openSession(session.sessionId).use { s ->
+                installer.openSession(sessionId).use { s ->
                     apkFile.inputStream().use { ins ->
                         s.openWrite("base.apk", 0, apkFile.length()).use { os -> ins.copyTo(os) }
                     }
                     val intent = Intent(context, InstallResultReceiver::class.java)
                     val pending = PendingIntent.getBroadcast(
-                        context, session.sessionId, intent,
+                        context, sessionId, intent,
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
                     )
                     s.commit(pending.intentSender)
