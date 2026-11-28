@@ -34,7 +34,7 @@ fun ChatScreen() {
     val context = LocalContext.current
     val app = context.applicationContext as DevBoxApp
     val store = remember { SettingsStore(context) }
-    val engine = remember { ConversationEngine(app.db.chatDao()) { store.openAiKey } }
+    val engine = remember { ConversationEngine(app.db.chatDao(), { store.openAiKey }, { context }) }
     val scope = rememberCoroutineScope()
     val tts = remember { TtsHelper(context) }
 

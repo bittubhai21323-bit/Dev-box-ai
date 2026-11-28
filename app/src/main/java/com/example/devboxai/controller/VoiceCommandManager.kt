@@ -21,7 +21,7 @@ class VoiceCommandManager(private val context: Context) {
     private val tts = MultilingualTts(context)
     private val app = context.applicationContext as DevBoxApp
     private val store = SettingsStore(context)
-    private val aiEngine = ConversationEngine(app.db.chatDao()) { store.openAiKey }
+    private val aiEngine = ConversationEngine(app.db.chatDao(), { store.openAiKey }, { context })
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val aiConversationId = "voice-fallback"

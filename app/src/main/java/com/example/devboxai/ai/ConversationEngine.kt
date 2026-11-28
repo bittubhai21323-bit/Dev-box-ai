@@ -14,7 +14,8 @@ import java.util.UUID
 
 class ConversationEngine(
     private val chatDao: ChatDao,
-    private val apiKeyProvider: () -> String
+    private val apiKeyProvider: () -> String,
+    private val contextProvider: () -> android.content.Context? = { null }
 ) {
     private val client = OkHttpClient()
 
@@ -22,6 +23,12 @@ class ConversationEngine(
 
     suspend fun send(conversationId: String, userText: String): String {
         chatDao.insert(ChatMessage(conversationId = conversationId, role = "user", content = userText))
+
+        // Instant local commands (/mausam, /calc, /battery, ...) — no server needed
+        QuickCommands.handle(contextProvider(), userText)?.let { localReply ->
+            chatDao.insert(ChatMessage(conversationId = conversationId, role = "assistant", content = localReply))
+            return localReply
+        }
 
         val history = chatDao.lastMessages(conversationId, 20).reversed()
         val key = apiKeyProvider()
