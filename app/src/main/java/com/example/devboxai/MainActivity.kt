@@ -121,7 +121,10 @@ private fun Root() {
         }
     ) { pad ->
         NavHost(nav, startDestination = "hud", modifier = Modifier.padding(pad)) {
-            composable("hud")          { HudScreen(onOpenTerminal = { nav.navigate("terminal") { launchSingleTop = true } }) }
+            composable("hud")          { HudScreen(
+                onOpenTerminal = { nav.navigate("terminal") { launchSingleTop = true } },
+                onNavigate = { route -> nav.navigate(route) { launchSingleTop = true } }
+            ) }
             composable("terminal")     { TerminalScreen() }
             composable("chat")         { ChatScreen() }
             composable("voice")        { VoiceControlScreen() }
