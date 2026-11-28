@@ -157,8 +157,23 @@ object WebScanner {
                 }
             }
             if (isHttps && bodyText.isNotEmpty()) {
-                val mixed = Regex("""(?:src|href)\s*=\s*["']http://""").findAll(bodyText).count()
-                if (mixed > 0) findings += "Mixed content: page me $mixed jagah http:// (bina secure) wale resource hai"
+                val mixedUrls = Regex("""(?:src|href)\s*=\s*["'](http://[^"']+)""").findAll(bodyText)
+                    .map { it.groupValues[1] }.distinct().toList()
+                if (mixedUrls.isNotEmpty()) {
+                    findings += "Mixed content: page me ${mixedUrls.size} jagah http:// (bina secure) wale resource hai"
+                    sb.append("Bina-secure resource: ${mixedUrls.take(5).joinToString(", ")}\n")
+                }
+                // WordPress plugins from HTML
+                val plugins = Regex("""wp-content/plugins/([a-zA-Z0-9_-]+)""").findAll(bodyText.lowercase())
+                    .map { it.groupValues[1] }.distinct().toList()
+                if (plugins.isNotEmpty()) {
+                    sb.append("WordPress plugins (${plugins.size}): ${plugins.take(12).joinToString(", ")}\n")
+                    findings += "WordPress ke ${plugins.size} plugin dikh rahe hai — purana plugin sabse bada rasta hota hai, sab update rakho"
+                }
+                val bs = Regex("""bootstrap[-.](\d+\.\d+\.\d+)""").find(bodyText.lowercase())?.groupValues?.getOrNull(1)
+                if (bs != null && (bs.substringBefore(".").toIntOrNull() ?: 5) < 4) {
+                    findings += "Purana Bootstrap $bs hai — update karna chahiye"
+                }
             }
             certFindings(current).forEach { findings += it }
             if (bodyText.contains("Index of /")) {
@@ -281,7 +296,7 @@ object WebScanner {
         listOf("port", "Docker", "Elasticsearch", "database", "MongoDB", "Redis", "MySQL").any { f.contains(it, ignoreCase = true) } -> "🔌 Port/Service kamiyan"
         listOf(".env", ".git", "backup", "source map", "composer", "package.json", "khula hai", "Directory listing").any { f.contains(it, ignoreCase = true) } -> "📁 Khuli File kamiyan"
         listOf("SPF", "DMARC", "DKIM", "email").any { f.contains(it, ignoreCase = true) } -> "📧 Email Security kamiyan"
-        listOf("WordPress", "jQuery", "Generator", "version").any { f.contains(it, ignoreCase = true) } -> "🧩 Purani Technology kamiyan"
+        listOf("WordPress", "jQuery", "Generator", "version", "plugin", "Bootstrap", "xmlrpc").any { f.contains(it, ignoreCase = true) } -> "🧩 Purani Technology kamiyan"
         listOf("password", "captcha", "form", "login").any { f.contains(it, ignoreCase = true) } -> "🔑 Login/Form kamiyan"
         else -> "⚠ Dusri kamiyan"
     }
@@ -313,6 +328,10 @@ object WebScanner {
         f.contains("SPF") -> "DNS me SPF record lagao: v=spf1 include:... -all"
         f.contains("DMARC") -> "DNS me DMARC record lagao: v=DMARC1; p=reject"
         f.contains("jQuery") -> "jQuery ko latest 3.x version par update karo"
+        f.contains("xmlrpc") -> "xmlrpc.php ko server par band karo (WordPress me aksar zaroorat nahi hoti)"
+        f.contains("plugin") -> "Saare plugin update karo, jo use nahi hota use hata do"
+        f.contains("Bootstrap") -> "Bootstrap ko latest version par update karo"
+        f.contains("API rasta") -> "API par login/auth lagao, bina login ke data mat do"
         f.contains("WordPress") -> "WordPress update karo, user list wali API band karo"
         f.contains("Generator") || f.contains("version dikh") -> "Version dikhane wale tag/header hatao, software update rakho"
         f.contains("password") && f.contains("HTTPS") -> "Login page ko HTTPS par le jao"
@@ -452,7 +471,38 @@ object WebScanner {
             "/backup/" to "Backup folder mila — purani files mil sakti hai",
             "/.DS_Store" to ".DS_Store file mili — folder ki file list leak hoti hai"
         )
+        val openSensitive = mutableListOf<String>()
         for ((path, risk) in sensitive) {
+            try {
+                val req = Request.Builder().url(base + path).head()
+                    .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                client.newCall(req).execute().use { res ->
+                    if (res.code == 200) {
+                        sb.append("⚠ $path → 200 (khula hai)\n")
+                        findings += "$path khula hai — $risk"
+                        openSensitive += path
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        // Jo kami mili, usi me thoda aur aage: related raste bhi check karo (sirf status)
+        val siblings = mutableListOf<Pair<String, String>>()
+        if ("/.env" in openSensitive) siblings += listOf(
+            "/.env.local" to ".env.local bhi khula hai — aur keys leak ho sakti hai",
+            "/.env.production" to ".env.production bhi khula hai — asal server ki keys leak ho sakti hai",
+            "/.env.dev" to ".env.dev bhi khula hai"
+        )
+        if ("/wp-login.php" in openSensitive) siblings += listOf(
+            "/xmlrpc.php" to "xmlrpc.php khula hai — isse password baar-baar try ho sakta hai (brute-force)",
+            "/wp-admin/" to "wp-admin khula hai — admin panel public hai"
+        )
+        if ("/.git/HEAD" in openSensitive) siblings += listOf(
+            "/.git/logs/HEAD" to "Git history bhi khuli hai — purana code aur commit dikh sakte hai"
+        )
+        if ("/phpmyadmin/" in openSensitive) siblings += listOf(
+            "/phpmyadmin/index.php" to "phpMyAdmin ka login page seedha khula hai"
+        )
+        for ((path, risk) in siblings) {
             try {
                 val req = Request.Builder().url(base + path).head()
                     .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
@@ -597,8 +647,8 @@ object WebScanner {
                 }
             } catch (_: Exception) { }
         }
-        // SSH/FTP banner
-        for ((port, name) in listOf(22 to "SSH", 21 to "FTP")) {
+        // SSH/FTP/SMTP/POP3/IMAP banner
+        for ((port, name) in listOf(22 to "SSH", 21 to "FTP", 25 to "SMTP", 110 to "POP3", 143 to "IMAP")) {
             try {
                 java.net.Socket().use { s ->
                     s.connect(java.net.InetSocketAddress(host, port), 1500)
@@ -723,7 +773,22 @@ object WebScanner {
                 // API endpoints hidden in page/JS
                 val eps = Regex("""["'](/(?:api|v1|v2|graphql|rest)/[a-zA-Z0-9/_-]{1,60})["']""").findAll(html)
                     .map { it.groupValues[1] }.distinct().take(10).toList()
-                if (eps.isNotEmpty()) sb.append("Page me mile API raste: ${eps.joinToString(", ")}\n")
+                if (eps.isNotEmpty()) {
+                    sb.append("Page me mile API raste: ${eps.joinToString(", ")}\n")
+                    // Jo API raste mile, unme thoda aage: kaun se live hai (sirf status)
+                    val liveEps = mutableListOf<String>()
+                    for (ep in eps.take(8)) {
+                        try {
+                            val ereq = Request.Builder().url(base + ep).head()
+                                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                            client.newCall(ereq).execute().use { eres ->
+                                liveEps += "$ep (${eres.code})"
+                                if (eres.code == 200) findings += "API rasta $ep bina login ke khula hai — data mil sakta hai, login/auth lagao"
+                            }
+                        } catch (_: Exception) { }
+                    }
+                    if (liveEps.isNotEmpty()) sb.append("API status: ${liveEps.joinToString(", ")}\n")
+                }
                 // First JS file: endpoints + source map
                 val jsSrc = Regex("""<script[^>]+src\s*=\s*["']([^"']+\.js)["']""", RegexOption.IGNORE_CASE)
                     .find(html)?.groupValues?.getOrNull(1)
@@ -787,6 +852,18 @@ object WebScanner {
                         sb.append("Subdomains (${subs.size}): ${subs.take(12).joinToString(", ")}")
                         if (subs.size > 12) sb.append(" …")
                         sb.append("\n")
+                        // Jo subdomain mile, unme thoda aage: kaun se live hai (sirf status)
+                        val liveSubs = mutableListOf<String>()
+                        for (sub in subs.take(15)) {
+                            try {
+                                val sreq = Request.Builder().url("https://$sub").head()
+                                    .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                                client.newCall(sreq).execute().use { sres ->
+                                    if (sres.code in 200..499) liveSubs += "$sub (${sres.code})"
+                                }
+                            } catch (_: Exception) { }
+                        }
+                        if (liveSubs.isNotEmpty()) sb.append("Live subdomains: ${liveSubs.joinToString(", ")}\n")
                     }
                 }
             }
