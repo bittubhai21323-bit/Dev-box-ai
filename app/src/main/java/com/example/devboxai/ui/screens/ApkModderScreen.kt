@@ -43,8 +43,19 @@ fun ApkModderScreen() {
 
     var allFilesGranted by remember { mutableStateOf(Environment.isExternalStorageManager()) }
 
-    fun run(label: String, block: suspend () -> Unit) {
+    // Termux RUN_COMMAND is a runtime permission; reinstalling the app resets it.
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        status = if (granted) "✓ Termux permission mil gayi — ab dobara try karo"
+                 else "✗ Termux permission nahi mili — Settings > Apps > DevBox AI > Permissions me Allow karo"
+    }
+
+    fun run(label: String, termux: Boolean = false, block: suspend () -> Unit) {
         if (busy) return
+        if (termux && !TermuxHelper.hasRunPermission(context)) {
+            status = "Termux permission chahiye — Allow karo, phir dobara try karo"
+            permLauncher.launch(TermuxHelper.RUN_PERMISSION)
+            return
+        }
         scope.launch {
             busy = true; status = "$label…"; log = ""
             try { block() } catch (e: Exception) { status = "Error: ${e.message}" } finally { busy = false }
@@ -62,19 +73,19 @@ fun ApkModderScreen() {
             }, { uri ->
                 run("Import APK") { val r = modder.importApk(uri); status = r.log }
             }, {
-                run("Decompiling") { modder.ensureWorkspace(); val r = modder.decompile(); status = if (r.ok) "✓ Decompiled" else "✗ Failed"; log = r.log }
+                run("Decompiling", termux = true) { modder.ensureWorkspace(); val r = modder.decompile(); status = if (r.ok) "✓ Decompiled" else "✗ Failed"; log = r.log }
+            }, { tab = 1 }, {
+                run("Recompiling", termux = true) { val r = modder.recompile(); status = if (r.ok) "✓ Built" else "✗ Failed"; log = r.log }
             }, {
-                run("Recompiling") { val r = modder.recompile(); status = if (r.ok) "✓ Built" else "✗ Failed"; log = r.log }
-            }, {
-                run("Aligning") { val r = modder.zipalign(); status = if (r.ok) "✓ Aligned" else "✗ Failed"; log = r.log }
+                run("Aligning", termux = true) { val r = modder.zipalign(); status = if (r.ok) "✓ Aligned" else "✗ Failed"; log = r.log }
             }, { pw ->
-                run("Signing") {
+                run("Signing", termux = true) {
                     val ksOk = ks.generate(pw)
                     if (!ksOk.ok) { status = "Keystore: ${ksOk.message}"; return@run }
                     val r = modder.sign(pw); status = if (r.ok) "✓ Signed" else "✗ Failed"; log = r.log
                 }
             }, {
-                run("Verifying") { val r = modder.verify(); status = if (r.ok) "✓ Verified" else "⚠ Issues"; log = r.log }
+                run("Verifying", termux = true) { val r = modder.verify(); status = if (r.ok) "✓ Verified" else "⚠ Issues"; log = r.log }
             }, {
                 val apk = File(ApkModder.SIGNED_APK)
                 if (apk.exists()) {
@@ -95,6 +106,7 @@ private fun WorkflowTab(
     context: android.content.Context, modder: ApkModder, ks: KeystoreManager,
     status: String, log: String, busy: Boolean, allFilesGranted: Boolean,
     onGrantFiles: () -> Unit, onImport: (Uri) -> Unit, onDecompile: () -> Unit,
+    onGoToFiles: () -> Unit,
     onRecompile: () -> Unit, onZipalign: () -> Unit, onSign: (String) -> Unit,
     onVerify: () -> Unit, onOpenFolder: () -> Unit
 ) {
@@ -109,7 +121,7 @@ private fun WorkflowTab(
 
         StepCard(1, "Pick APK", "SAF picker", "Pick", { picker.launch(arrayOf("application/vnd.android.package-archive")) }, !busy)
         StepCard(2, "Decompile", "apktool d", "Decompile", onDecompile, !busy)
-        StepCard(3, "Edit", "Smali, XML", "Go to Files", { }, !busy)
+        StepCard(3, "Edit", "Smali, XML", "Go to Files", onGoToFiles, !busy)
         StepCard(4, "Recompile", "apktool b", "Build", onRecompile, !busy)
         StepCard(5, "Zipalign", "zipalign -p", "Align", onZipalign, !busy)
 
