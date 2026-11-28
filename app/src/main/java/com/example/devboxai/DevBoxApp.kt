@@ -44,7 +44,7 @@ class DevBoxApp : Application() {
         )
 
         appScope.launch {
-            try { BugReporter(this@DevBoxApp).uploadPending() } catch (_: Exception) {}
+            try { BugReporter(this@DevBoxApp).uploadPending() } catch (_: Throwable) {}
         }
 
         try {

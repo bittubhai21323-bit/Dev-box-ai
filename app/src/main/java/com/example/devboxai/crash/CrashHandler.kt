@@ -55,6 +55,30 @@ class CrashHandler(
             val extDir = File(context.getExternalFilesDir(null), "crashes").apply { mkdirs() }
             File(extDir, file.name).writeText(info)
         } catch (_: Exception) {}
+        // And to public Downloads/DevBoxCrashes (readable from Termux / Files app)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, file.name)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
+                    put(android.provider.MediaStore.Downloads.RELATIVE_PATH, "Download/DevBoxCrashes")
+                }
+                val uri = context.contentResolver.insert(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
+                )
+                uri?.let { u ->
+                    context.contentResolver.openOutputStream(u)?.use { it.write(info.toByteArray()) }
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = File(
+                    android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS
+                    ), "DevBoxCrashes"
+                ).apply { mkdirs() }
+                File(dir, file.name).writeText(info)
+            }
+        } catch (_: Exception) {}
         Log.e("CrashHandler", "Crash saved: ${file.name}")
     }
 

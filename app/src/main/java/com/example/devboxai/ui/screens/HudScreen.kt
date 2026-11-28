@@ -97,12 +97,14 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
     LaunchedEffect(Unit) {
         // Silent update check on launch
         launch {
-            val info = com.example.devboxai.update.UpdateManager(context).checkFromGitHub()
-            if (info.available) {
-                updateAvailable = true
-                updateUrl = info.apkUrl
-                updateStamp = info.changelog.removePrefix("Stamp: ")
-            }
+            try {
+                val info = com.example.devboxai.update.UpdateManager(context).checkFromGitHub()
+                if (info.available) {
+                    updateAvailable = true
+                    updateUrl = info.apkUrl
+                    updateStamp = info.changelog.removePrefix("Stamp: ")
+                }
+            } catch (_: Throwable) { /* update check must never crash the app */ }
         }
         val lines = listOf(
             "> INITIATING DEVBOX_AI_CORE...",
@@ -118,6 +120,7 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
         ip = withContext(Dispatchers.IO) { deviceIp() }
         var tick = 0
         while (true) {
+          try {
             clock = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             uplink = isOnline(context)
             netType = networkType(context)
@@ -137,6 +140,7 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
                     .format(memUsedGb, rxMb, txMb)
                 liveLog = (liveLog + line).takeLast(5)
             }
+          } catch (_: Throwable) { /* one bad tick must never kill the HUD */ }
             delay(1000)
         }
     }
