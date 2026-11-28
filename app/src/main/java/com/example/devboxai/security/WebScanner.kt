@@ -51,6 +51,8 @@ object WebScanner {
             var headers: Map<String, String> = emptyMap()
             var contentType = ""
             var contentLength = -1L
+            var bodyText = ""
+            var setCookies: List<String> = emptyList()
 
             while (hops < 6) {
                 val req = Request.Builder().url(current)
@@ -70,6 +72,8 @@ object WebScanner {
                         hops++
                         return@use
                     }
+                    setCookies = res.headers("Set-Cookie")
+                    bodyText = try { res.body?.string()?.take(200_000) ?: "" } catch (_: Exception) { "" }
                     hops = 99 // done
                 }
                 if (hops == 99) break
@@ -109,6 +113,41 @@ object WebScanner {
             }
             sb.append("\nGrade: $grade — $score/6 headers\n")
             if (!current.startsWith("https://")) sb.append("Note: HTTPS na hone se grade asal me aur kam hai.\n")
+
+            // ---- Kamiyan (findings) ----
+            val findings = mutableListOf<String>()
+            val isHttps = current.startsWith("https://")
+            if (!isHttps) findings += "HTTPS nahi hai — data plain text me jata hai, beech me koi bhi padh sakta hai"
+            for ((header, label) in SECURITY_HEADERS) {
+                if (headers.keys.none { it.equals(header, ignoreCase = true) }) {
+                    findings += "$header gayab hai ($label) — ${headerRisk(header)}"
+                }
+            }
+            val server = headers["Server"] ?: ""
+            if (server.matches(Regex(".*\\d+\\.\\d+.*"))) {
+                findings += "Server ka version dikh raha hai ($server) — hacker ko pata chalta hai kaun sa software chal raha hai"
+            }
+            headers["X-Powered-By"]?.let {
+                findings += "X-Powered-By dikh raha hai ($it) — technology ka pata chalta hai"
+            }
+            for (cookie in setCookies) {
+                val name = cookie.substringBefore("=").trim()
+                if (isHttps && !cookie.contains("Secure", ignoreCase = true)) {
+                    findings += "Cookie '$name' par Secure flag nahi — cookie bina encryption ke bhi ja sakti hai"
+                }
+                if (!cookie.contains("HttpOnly", ignoreCase = true)) {
+                    findings += "Cookie '$name' par HttpOnly nahi — JavaScript cookie chura sakta hai (XSS)"
+                }
+            }
+            if (isHttps && bodyText.isNotEmpty()) {
+                val mixed = Regex("""(?:src|href)\s*=\s*["']http://""").findAll(bodyText).count()
+                if (mixed > 0) findings += "Mixed content: page me $mixed jagah http:// (bina secure) wale resource hai"
+            }
+            certFindings(current).forEach { findings += it }
+
+            sb.append("\n⚠ Kamiyan (${findings.size}):\n")
+            if (findings.isEmpty()) sb.append("✓ Koi badi kami nahi mili — website theek se secure hai\n")
+            else findings.forEachIndexed { i, f -> sb.append("${i + 1}. $f\n") }
         } catch (e: Exception) {
             sb.append("\n✗ Scan fail: ${e.message}\n")
             sb.append("Check karo: URL sahi hai? Internet chal raha hai?")
@@ -145,4 +184,39 @@ object WebScanner {
 
     private fun issuerShort(cert: X509Certificate): String =
         cert.issuerX500Principal.name.take(60)
+
+    private fun headerRisk(header: String): String = when (header) {
+        "Strict-Transport-Security" -> "browser ko HTTPS par majboor nahi karta, downgrade attack ho sakta hai"
+        "Content-Security-Policy" -> "XSS (script injection) attack ka risk badh jata hai"
+        "X-Frame-Options" -> "site ko dusri site ke iframe me daal kar clickjacking ho sakta hai"
+        "X-Content-Type-Options" -> "browser file type guess karke galat file chala sakta hai"
+        "Referrer-Policy" -> "dusri sites ko pata chalta hai user kahan se aaya"
+        "Permissions-Policy" -> "camera/mic/location jaise feature bina rok ke use ho sakte hai"
+        else -> "security kamzor hoti hai"
+    }
+
+    private fun certFindings(url: String): List<String> {
+        if (!url.startsWith("https://")) return emptyList()
+        return try {
+            val conn = URL(url).openConnection() as HttpsURLConnection
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
+            conn.connect()
+            val cert = conn.serverCertificates.firstOrNull() as? X509Certificate
+            conn.disconnect()
+            if (cert == null) return emptyList()
+            val out = mutableListOf<String>()
+            val daysLeft = (cert.notAfter.time - System.currentTimeMillis()) / 86_400_000
+            when {
+                daysLeft < 0 -> out += "SSL certificate EXPIRE ho chuka hai — browser warning dikhayega"
+                daysLeft < 30 -> out += "SSL certificate sirf $daysLeft din me expire hoga — renew karna padega"
+            }
+            if (cert.sigAlgName.contains("SHA1", ignoreCase = true)) {
+                out += "Certificate kamzor SHA1 signature use karta hai — purana aur asurakshit hai"
+            }
+            out
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
 }
