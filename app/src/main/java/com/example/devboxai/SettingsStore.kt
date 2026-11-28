@@ -6,12 +6,17 @@ import androidx.security.crypto.MasterKey
 
 class SettingsStore(context: Context) {
 
-    private val prefs = EncryptedSharedPreferences.create(
-        context, "devbox_secure",
-        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    // Encrypted prefs can throw on some devices (Keystore issues) — never let that crash the app.
+    private val prefs: android.content.SharedPreferences = try {
+        EncryptedSharedPreferences.create(
+            context, "devbox_secure",
+            MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (_: Exception) {
+        context.getSharedPreferences("devbox_secure_fallback", Context.MODE_PRIVATE)
+    }
 
     var openAiKey: String
         get() = prefs.getString("openai_key", "") ?: ""

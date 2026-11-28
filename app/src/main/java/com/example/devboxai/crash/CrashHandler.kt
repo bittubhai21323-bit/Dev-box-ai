@@ -50,6 +50,11 @@ class CrashHandler(
             appendLine(sw.toString())
         }
         file.writeText(info)
+        // Also copy to external files dir so the user can share the crash report
+        try {
+            val extDir = File(context.getExternalFilesDir(null), "crashes").apply { mkdirs() }
+            File(extDir, file.name).writeText(info)
+        } catch (_: Exception) {}
         Log.e("CrashHandler", "Crash saved: ${file.name}")
     }
 

@@ -47,16 +47,25 @@ class DevBoxApp : Application() {
             try { BugReporter(this@DevBoxApp).uploadPending() } catch (_: Exception) {}
         }
 
-        val backupRequest = androidx.work.PeriodicWorkRequestBuilder<AutoBackupWorker>(
-            12, java.util.concurrent.TimeUnit.HOURS
-        ).build()
-        androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "devbox_auto_backup",
-            androidx.work.ExistingPeriodicWorkPolicy.KEEP,
-            backupRequest
-        )
+        try {
+            val backupRequest = androidx.work.PeriodicWorkRequestBuilder<AutoBackupWorker>(
+                12, java.util.concurrent.TimeUnit.HOURS
+            ).build()
+            androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "devbox_auto_backup",
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                backupRequest
+            )
+        } catch (e: Exception) {
+            Log.w("DevBoxApp", "WorkManager setup failed", e)
+        }
 
-        val store = FirebaseConfigStore(this)
+        val store = try {
+            FirebaseConfigStore(this)
+        } catch (e: Exception) {
+            Log.w("DevBoxApp", "FirebaseConfigStore failed — local only", e)
+            return
+        }
         if (!store.isConfigured()) {
             Log.i("DevBoxApp", "Firebase not configured — local only")
             return
