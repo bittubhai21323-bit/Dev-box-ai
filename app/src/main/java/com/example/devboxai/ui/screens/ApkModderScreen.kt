@@ -35,10 +35,10 @@ fun ApkModderScreen() {
     val modder = remember { ApkModder(context) }
     val ks = remember { KeystoreManager(context) }
 
-    var status by remember { mutableStateOf("Ready") }
-    var log by remember { mutableStateOf("") }
+    var status by rememberSaveable { mutableStateOf("Ready") }
+    var log by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var tab by remember { mutableStateOf(0) }
+    var tab by rememberSaveable { mutableStateOf(0) }
     val tabs = listOf("Workflow", "Files", "Settings")
 
     var allFilesGranted by remember { mutableStateOf(Environment.isExternalStorageManager()) }
@@ -110,7 +110,7 @@ private fun WorkflowTab(
     onRecompile: () -> Unit, onZipalign: () -> Unit, onSign: (String) -> Unit,
     onVerify: () -> Unit, onOpenFolder: () -> Unit
 ) {
-    var password by remember { mutableStateOf("boss12345") }
+    var password by rememberSaveable { mutableStateOf("boss12345") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) onImport(uri) }
 
     Column(Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -153,10 +153,10 @@ private fun StepCard(n: Int, title: String, desc: String, buttonLabel: String, o
 @Composable
 private fun FilesTab(modder: ApkModder, status: String, setStatus: (String) -> Unit, busy: Boolean) {
     val scope = rememberCoroutineScope()
-    var currentPath by remember { mutableStateOf("") }
+    var currentPath by rememberSaveable { mutableStateOf("") }
     var nodes by remember { mutableStateOf<List<ApkModder.FileNode>>(emptyList()) }
-    var editorPath by remember { mutableStateOf<String?>(null) }
-    var editorText by remember { mutableStateOf("") }
+    var editorPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var editorText by rememberSaveable { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
 
     fun load(path: String) { scope.launch { loading = true; nodes = modder.listDir(path); currentPath = path; loading = false } }
@@ -200,7 +200,7 @@ private fun FilesTab(modder: ApkModder, status: String, setStatus: (String) -> U
 @Composable
 private fun SettingsTab(context: android.content.Context, ks: KeystoreManager, status: String, setStatus: (String) -> Unit) {
     val scope = rememberCoroutineScope()
-    var pw by remember { mutableStateOf("boss12345") }
+    var pw by rememberSaveable { mutableStateOf("boss12345") }
 
     Column(Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Keystore", style = MaterialTheme.typography.titleSmall)

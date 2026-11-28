@@ -24,15 +24,15 @@ import kotlinx.coroutines.launch
 fun FirebaseSetupScreen(onDone: () -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as DevBoxApp
-    var mode by remember { mutableStateOf(0) }
-    var jsonInput by remember { mutableStateOf("") }
-    var projectId by remember { mutableStateOf("") }
-    var appId by remember { mutableStateOf("") }
-    var apiKey by remember { mutableStateOf("") }
-    var senderId by remember { mutableStateOf("") }
-    var bucket by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf("") }
-    var isError by remember { mutableStateOf(false) }
+    var mode by rememberSaveable { mutableStateOf(0) }
+    var jsonInput by rememberSaveable { mutableStateOf("") }
+    var projectId by rememberSaveable { mutableStateOf("") }
+    var appId by rememberSaveable { mutableStateOf("") }
+    var apiKey by rememberSaveable { mutableStateOf("") }
+    var senderId by rememberSaveable { mutableStateOf("") }
+    var bucket by rememberSaveable { mutableStateOf("") }
+    var message by rememberSaveable { mutableStateOf("") }
+    var isError by rememberSaveable { mutableStateOf(false) }
 
     fun save(creds: FirebaseCredentials) {
         val store = FirebaseConfigStore(context)

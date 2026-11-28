@@ -80,19 +80,19 @@ fun HudScreen(
         } catch (_: Exception) { null }
     }
 
-    var clock by remember { mutableStateOf("") }
-    var uplink by remember { mutableStateOf(false) }
-    var cpuLoad by remember { mutableStateOf(0f) }
-    var memUsedGb by remember { mutableStateOf(0.0) }
-    var memTotalGb by remember { mutableStateOf(0.0) }
-    var rxMb by remember { mutableStateOf(0.0) }
-    var txMb by remember { mutableStateOf(0.0) }
-    var ip by remember { mutableStateOf("—") }
-    var netType by remember { mutableStateOf("") }
-    var netNodes by remember { mutableStateOf(0) }
-    var batteryPct by remember { mutableStateOf(-1) }
-    var charging by remember { mutableStateOf(false) }
-    var weatherText by remember { mutableStateOf("") }
+    var clock by rememberSaveable { mutableStateOf("") }
+    var uplink by rememberSaveable { mutableStateOf(false) }
+    var cpuLoad by rememberSaveable { mutableStateOf(0f) }
+    var memUsedGb by rememberSaveable { mutableStateOf(0.0) }
+    var memTotalGb by rememberSaveable { mutableStateOf(0.0) }
+    var rxMb by rememberSaveable { mutableStateOf(0.0) }
+    var txMb by rememberSaveable { mutableStateOf(0.0) }
+    var ip by rememberSaveable { mutableStateOf("—") }
+    var netType by rememberSaveable { mutableStateOf("") }
+    var netNodes by rememberSaveable { mutableStateOf(0) }
+    var batteryPct by rememberSaveable { mutableStateOf(-1) }
+    var charging by rememberSaveable { mutableStateOf(false) }
+    var weatherText by rememberSaveable { mutableStateOf("") }
     var liveLog by remember { mutableStateOf(listOf<String>()) }
     val myPid = remember { android.os.Process.myPid() }
     val isRoot = remember {
@@ -100,13 +100,13 @@ fun HudScreen(
             .any { File(it).exists() }
     }
 
-    var scanProgress by remember { mutableStateOf(-1f) } // -1 = idle
-    var scanReport by remember { mutableStateOf("") }
+    var scanProgress by rememberSaveable { mutableStateOf(-1f) } // -1 = idle
+    var scanReport by rememberSaveable { mutableStateOf("") }
     var bootLines by remember { mutableStateOf(listOf<String>()) }
-    var updateAvailable by remember { mutableStateOf(false) }
-    var updateUrl by remember { mutableStateOf("") }
-    var updateStamp by remember { mutableStateOf("") }
-    var updateProgress by remember { mutableStateOf(-1) }
+    var updateAvailable by rememberSaveable { mutableStateOf(false) }
+    var updateUrl by rememberSaveable { mutableStateOf("") }
+    var updateStamp by rememberSaveable { mutableStateOf("") }
+    var updateProgress by rememberSaveable { mutableStateOf(-1) }
 
     LaunchedEffect(Unit) {
         launch {

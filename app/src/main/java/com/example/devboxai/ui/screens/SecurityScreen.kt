@@ -30,7 +30,7 @@ fun SecurityScreen() {
     val blocker = remember { AppBlocker(context, app.db.blockedAppDao()) }
     val guardian = remember { ProcessGuardian(context, app.db.blockedAppDao(), app.db.securityLogDao()) }
 
-    var tab by remember { mutableStateOf(0) }
+    var tab by rememberSaveable { mutableStateOf(0) }
     val tabs = listOf("Blocked", "Scanner", "Logs", "Root Ops")
 
     Column(Modifier.fillMaxSize()) {
@@ -49,7 +49,7 @@ fun SecurityScreen() {
 @Composable
 private fun BlockedTab(app: DevBoxApp, blocker: AppBlocker, scope: kotlinx.coroutines.CoroutineScope) {
     val blocked by app.db.blockedAppDao().all().collectAsState(initial = emptyList())
-    var showPicker by remember { mutableStateOf(false) }
+    var showPicker by rememberSaveable { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -82,8 +82,8 @@ private fun BlockedTab(app: DevBoxApp, blocker: AppBlocker, scope: kotlinx.corou
 @Composable
 private fun AppPickerDialog(blocker: AppBlocker, onDismiss: () -> Unit, onPick: (String, String, String) -> Unit) {
     var apps by remember { mutableStateOf<List<AppBlocker.AppInfo>>(emptyList()) }
-    var query by remember { mutableStateOf("") }
-    var reason by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
+    var reason by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(Unit) { apps = blocker.installedApps() }
 
     AlertDialog(
@@ -153,9 +153,9 @@ private fun LogsTab(app: DevBoxApp) {
 
 @Composable
 private fun RootOpsTab(context: android.content.Context) {
-    var pkg by remember { mutableStateOf("com.example.package") }
-    var out by remember { mutableStateOf("") }
-    var rootStatus by remember { mutableStateOf("Root check ho raha hai…") }
+    var pkg by rememberSaveable { mutableStateOf("com.example.package") }
+    var out by rememberSaveable { mutableStateOf("") }
+    var rootStatus by rememberSaveable { mutableStateOf("Root check ho raha hai…") }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { rootStatus = RootProcessManager.checkRoot(context) }
     fun runOp(cmd: String, okText: String) {

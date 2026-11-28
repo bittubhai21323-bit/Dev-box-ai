@@ -20,7 +20,7 @@ fun SettingsScreen() {
     var gh by remember { mutableStateOf(store.githubToken) }
     var lang by remember { mutableStateOf(store.preferredLang) }
     var personality by remember { mutableStateOf(store.personality) }
-    var saved by remember { mutableStateOf(false) }
+    var saved by rememberSaveable { mutableStateOf(false) }
 
     val langs = listOf("" to "Auto-detect", "hi" to "हिन्दी", "en" to "English", "es" to "Español", "fr" to "Français", "ar" to "العربية", "zh" to "中文", "ja" to "日本語")
     val personalities = listOf("boss" to "Boss", "friend" to "Friend", "professional" to "Pro", "minimal" to "Minimal")
@@ -31,7 +31,7 @@ fun SettingsScreen() {
         OutlinedTextField(value = gh, onValueChange = { gh = it; saved = false }, label = { Text("GitHub token") }, modifier = Modifier.fillMaxWidth())
 
         Text("Voice language", style = MaterialTheme.typography.titleSmall)
-        var langExpanded by remember { mutableStateOf(false) }
+        var langExpanded by rememberSaveable { mutableStateOf(false) }
         Box {
             OutlinedButton(onClick = { langExpanded = true }, modifier = Modifier.fillMaxWidth()) { Text(langs.firstOrNull { it.first == lang }?.second ?: "Auto") }
             DropdownMenu(expanded = langExpanded, onDismissRequest = { langExpanded = false }) {
@@ -40,7 +40,7 @@ fun SettingsScreen() {
         }
 
         Text("Personality", style = MaterialTheme.typography.titleSmall)
-        var pExpanded by remember { mutableStateOf(false) }
+        var pExpanded by rememberSaveable { mutableStateOf(false) }
         Box {
             OutlinedButton(onClick = { pExpanded = true }, modifier = Modifier.fillMaxWidth()) { Text(personalities.firstOrNull { it.first == personality }?.second ?: "Boss") }
             DropdownMenu(expanded = pExpanded, onDismissRequest = { pExpanded = false }) {
@@ -55,11 +55,11 @@ fun SettingsScreen() {
         Text("App Update", style = MaterialTheme.typography.titleSmall)
         val scope = rememberCoroutineScope()
         val updater = remember { UpdateManager(ctx) }
-        var updateStatus by remember { mutableStateOf("Version ${updater.currentVersionName()}") }
-        var updateUrl by remember { mutableStateOf("") }
-        var updateStamp by remember { mutableStateOf("") }
+        var updateStatus by rememberSaveable { mutableStateOf("Version ${updater.currentVersionName()}") }
+        var updateUrl by rememberSaveable { mutableStateOf("") }
+        var updateStamp by rememberSaveable { mutableStateOf("") }
         var downloading by remember { mutableStateOf(false) }
-        var progress by remember { mutableStateOf(0) }
+        var progress by rememberSaveable { mutableStateOf(0) }
 
         OutlinedButton(onClick = {
             updateStatus = "Check kar raha hoon..."
@@ -102,7 +102,7 @@ fun SettingsScreen() {
 
         HorizontalDivider()
         Text("Crash Reports", style = MaterialTheme.typography.titleSmall)
-        var crashText by remember { mutableStateOf<String?>(null) }
+        var crashText by rememberSaveable { mutableStateOf<String?>(null) }
         OutlinedButton(onClick = {
             val dirs = listOfNotNull(
                 java.io.File(ctx.filesDir, "crashes"),

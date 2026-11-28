@@ -41,9 +41,9 @@ fun RemoteScreen(onGoToSetup: () -> Unit = {}) {
 
     val flags by app.remoteConfig.flags.collectAsState()
     val lastSync by app.remoteConfig.lastSync.collectAsState()
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var authMsg by remember { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var authMsg by rememberSaveable { mutableStateOf("") }
     var signedIn by remember { mutableStateOf(AdminAuth.isSignedIn) }
 
     Column(Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState())) {

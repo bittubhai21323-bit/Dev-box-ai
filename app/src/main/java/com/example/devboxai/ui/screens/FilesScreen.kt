@@ -27,7 +27,9 @@ fun FilesScreen() {
     val fm = remember { FileManager(context) }
     var current by remember { mutableStateOf<DocumentFile?>(null) }
     var files by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
-    var codeOnly by remember { mutableStateOf(false) }
+    var codeOnly by rememberSaveable { mutableStateOf(false) }
+    // Remember the picked root folder so returning to this tab restores it
+    var rootUri by rememberSaveable { mutableStateOf<String?>(null) }
 
     fun load(dir: DocumentFile) {
         current = dir
@@ -35,9 +37,18 @@ fun FilesScreen() {
         files = if (codeOnly) CodeFileManager.filter(raw) else raw
     }
 
+    LaunchedEffect(Unit) {
+        if (current == null) {
+            rootUri?.let { saved ->
+                try { fm.fromTree(android.net.Uri.parse(saved))?.let { load(it) } } catch (_: Exception) {}
+            }
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) } catch (_: Exception) {}
+            rootUri = uri.toString()
             fm.fromTree(uri)?.let { load(it) }
         }
     }

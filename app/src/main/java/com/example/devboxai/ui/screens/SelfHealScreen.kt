@@ -26,12 +26,12 @@ fun SelfHealScreen() {
     val um = remember { UpdateManager(context) }
     val br = remember { BugReporter(context) }
 
-    var status by remember { mutableStateOf("") }
+    var status by rememberSaveable { mutableStateOf("") }
     var backups by remember { mutableStateOf<List<File>>(emptyList()) }
     var crashes by remember { mutableStateOf<List<File>>(emptyList()) }
-    var pw by remember { mutableStateOf("boss12345") }
+    var pw by rememberSaveable { mutableStateOf("boss12345") }
     var health by remember { mutableStateOf<HealthChecker.Report?>(null) }
-    var dlProgress by remember { mutableStateOf(0) }
+    var dlProgress by rememberSaveable { mutableStateOf(0) }
 
     fun refresh() { backups = bm.listBackups(); crashes = br.localCrashes() }
     LaunchedEffect(Unit) { refresh() }

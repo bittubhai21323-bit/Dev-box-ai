@@ -39,7 +39,7 @@ fun ChatScreen() {
     val tts = remember { TtsHelper(context) }
 
     val conversationId = remember { engine.newConversationId() }
-    var input by remember { mutableStateOf("") }
+    var input by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val messages by app.db.chatDao().messages(conversationId).collectAsState(initial = emptyList())
 

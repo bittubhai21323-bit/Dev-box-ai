@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,6 +35,16 @@ private val TermBg = Color(0xFF050505)
 
 private data class TermLine(val text: String, val isCommand: Boolean = false)
 
+// Savers so terminal output + command history survive tab switches
+private val termLineSaver = androidx.compose.runtime.saveable.listSaver<List<TermLine>, String>(
+    save = { list -> list.map { (if (it.isCommand) "1" else "0") + it.text } },
+    restore = { saved -> saved.map { TermLine(it.drop(1), it.startsWith("1")) } }
+)
+private val stringListSaver = androidx.compose.runtime.saveable.listSaver<List<String>, String>(
+    save = { it },
+    restore = { it }
+)
+
 /**
  * Kali-style in-app terminal.
  * Local mode runs Android shell commands directly; Termux mode runs full
@@ -45,11 +56,12 @@ fun TerminalScreen() {
     val scope = rememberCoroutineScope()
     val termuxInstalled = remember { TermuxHelper.isTermuxInstalled(context) }
 
-    var useTermux by remember { mutableStateOf(false) }
-    var input by remember { mutableStateOf("") }
+    var useTermux by rememberSaveable { mutableStateOf(false) }
+    var input by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var workDir by remember { mutableStateOf(context.filesDir) }
-    var lines by remember {
+    var workDirPath by rememberSaveable { mutableStateOf(context.filesDir.absolutePath) }
+    val workDir: File get() = File(workDirPath)
+    var lines by rememberSaveable(stateSaver = termLineSaver) {
         mutableStateOf(
             listOf(
                 TermLine("DevBox Kali Terminal v1.0"),
@@ -58,8 +70,8 @@ fun TerminalScreen() {
             )
         )
     }
-    val history = remember { mutableStateListOf<String>() }
-    var historyIndex by remember { mutableStateOf(-1) }
+    var history by rememberSaveable(stateSaver = stringListSaver) { mutableStateOf(listOf<String>()) }
+    var historyIndex by rememberSaveable { mutableStateOf(-1) }
     val listState = rememberLazyListState()
 
     fun prompt(): String = if (useTermux) "devbox@termux:~$ " else "devbox@kali:${workDir.name}$ "
@@ -71,7 +83,7 @@ fun TerminalScreen() {
     fun runCommand(raw: String) {
         val cmd = raw.trim()
         if (cmd.isBlank() || busy) return
-        history.add(0, cmd)
+        history = listOf(cmd) + history
         historyIndex = -1
         append(prompt() + cmd, isCommand = true)
 
@@ -101,7 +113,7 @@ fun TerminalScreen() {
                     target.startsWith("/") -> File(target)
                     else -> File(workDir, target)
                 }
-                if (newDir.isDirectory) workDir = newDir
+                if (newDir.isDirectory) workDirPath = newDir.absolutePath
                 else append("cd: no such directory: $target")
                 return
             }

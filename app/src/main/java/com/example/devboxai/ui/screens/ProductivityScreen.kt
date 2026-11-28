@@ -26,7 +26,7 @@ fun ProductivityScreen() {
     val context = LocalContext.current
     val app = context.applicationContext as DevBoxApp
     val scope = rememberCoroutineScope()
-    var tab by remember { mutableStateOf(0) }
+    var tab by rememberSaveable { mutableStateOf(0) }
     val tabs = listOf("Tasks", "Journal", "Reminders", "Routines")
 
     Column(Modifier.fillMaxSize()) {
@@ -46,7 +46,7 @@ fun ProductivityScreen() {
 private fun TasksTab(app: DevBoxApp, scope: CoroutineScope) {
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
     val tasks by app.db.taskDao().forDate(today).collectAsState(initial = emptyList())
-    var text by remember { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
 
     Column(Modifier.padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -70,8 +70,8 @@ private fun TasksTab(app: DevBoxApp, scope: CoroutineScope) {
 @Composable
 private fun JournalTab(app: DevBoxApp, scope: CoroutineScope) {
     val entries by app.db.journalDao().all().collectAsState(initial = emptyList())
-    var title by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
+    var title by rememberSaveable { mutableStateOf("") }
+    var content by rememberSaveable { mutableStateOf("") }
 
     Column(Modifier.padding(12.dp)) {
         OutlinedTextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Title") })
@@ -93,8 +93,8 @@ private fun JournalTab(app: DevBoxApp, scope: CoroutineScope) {
 @Composable
 private fun RemindersTab(app: DevBoxApp, scope: CoroutineScope, context: Context) {
     val reminders by app.db.reminderDao().all().collectAsState(initial = emptyList())
-    var title by remember { mutableStateOf("") }
-    var minutes by remember { mutableStateOf("10") }
+    var title by rememberSaveable { mutableStateOf("") }
+    var minutes by rememberSaveable { mutableStateOf("10") }
 
     Column(Modifier.padding(12.dp)) {
         OutlinedTextField(value = title, onValueChange = { title = it }, placeholder = { Text("Reminder") }, modifier = Modifier.fillMaxWidth())
@@ -124,9 +124,9 @@ private fun RemindersTab(app: DevBoxApp, scope: CoroutineScope, context: Context
 @Composable
 private fun RoutinesTab(app: DevBoxApp, scope: CoroutineScope, context: Context) {
     val routines by app.db.routineDao().all().collectAsState(initial = emptyList())
-    var name by remember { mutableStateOf("") }
-    var hour by remember { mutableStateOf("8") }
-    var minute by remember { mutableStateOf("0") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var hour by rememberSaveable { mutableStateOf("8") }
+    var minute by rememberSaveable { mutableStateOf("0") }
 
     Column(Modifier.padding(12.dp)) {
         OutlinedTextField(value = name, onValueChange = { name = it }, placeholder = { Text("Routine name") }, modifier = Modifier.fillMaxWidth())

@@ -28,10 +28,10 @@ import com.example.devboxai.tools.ToolsCatalog
 @Composable
 fun TermuxToolsScreen() {
     val context = LocalContext.current
-    var output by remember { mutableStateOf("") }
-    var showOutput by remember { mutableStateOf(false) }
+    var output by rememberSaveable { mutableStateOf("") }
+    var showOutput by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var selectedCategory by remember { mutableStateOf("All") }
+    var selectedCategory by rememberSaveable { mutableStateOf("All") }
 
     val categories = remember { listOf("All") + ToolsCatalog.tools.map { it.category }.distinct().sorted() }
     val filtered = remember(selectedCategory) { if (selectedCategory == "All") ToolsCatalog.tools else ToolsCatalog.tools.filter { it.category == selectedCategory } }
@@ -114,7 +114,7 @@ fun TermuxToolsScreen() {
 @Composable
 private fun ToolCard(tool: CliTool, onRun: (String) -> Unit) {
     var arg by remember(tool.name) { mutableStateOf(tool.defaultArg) }
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
