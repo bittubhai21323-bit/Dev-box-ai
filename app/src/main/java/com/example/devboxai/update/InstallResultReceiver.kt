@@ -11,7 +11,9 @@ class InstallResultReceiver : BroadcastReceiver() {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             // Must launch the confirmation intent, otherwise install stalls silently
-            val confirm = intent.getParcelableExtra<Intent>(PackageInstaller.EXTRA_INTENT)
+            // EXTRA_INTENT constant is not available in this compileSdk; use the literal key
+            @Suppress("DEPRECATION")
+            val confirm = intent.getParcelableExtra<Intent>("android.content.pm.extra.INTENT")
             if (confirm != null) {
                 confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 try { context.startActivity(confirm) } catch (_: Exception) {}
