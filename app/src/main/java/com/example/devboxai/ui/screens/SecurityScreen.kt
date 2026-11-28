@@ -41,7 +41,7 @@ fun SecurityScreen() {
         when (tab) {
             0 -> BlockedTab(app, blocker, scope)
             1 -> ScannerTab(guardian, scope)
-            2 -> WebScanTab(scope)
+            2 -> WebScanTab()
             3 -> LogsTab(app)
             4 -> RootOpsTab(context)
         }
@@ -136,32 +136,24 @@ private fun ScannerTab(guardian: ProcessGuardian, scope: kotlinx.coroutines.Coro
 }
 
 @Composable
-private fun WebScanTab(scope: kotlinx.coroutines.CoroutineScope) {
-    var url by rememberSaveable { mutableStateOf("") }
-    var report by rememberSaveable { mutableStateOf("") }
-    var scanning by remember { mutableStateOf(false) }
+private fun WebScanTab() {
+    val state = com.example.devboxai.security.WebScanState
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Text("🌐 Website Scan — URL dalo, website ki jaankari aur security grade milega", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
-            value = url, onValueChange = { url = it },
+            value = state.url, onValueChange = { state.url = it },
             label = { Text("Website URL (jaise https://example.com)") },
             modifier = Modifier.fillMaxWidth(), singleLine = true
         )
         Button(
-            onClick = {
-                scanning = true; report = "Scan ho raha hai…"
-                scope.launch {
-                    report = com.example.devboxai.security.WebScanner.scan(url)
-                    scanning = false
-                }
-            },
-            enabled = !scanning && url.isNotBlank(),
+            onClick = { state.startScan() },
+            enabled = !state.scanning && state.url.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
-        ) { Text(if (scanning) "Scanning…" else "Scan karo") }
+        ) { Text(if (state.scanning) "Scanning…" else "Scan karo") }
         Spacer(Modifier.height(8.dp))
         Text(
-            report, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+            state.report, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
         )
     }

@@ -40,8 +40,12 @@ fun FilesScreen() {
 
     LaunchedEffect(Unit) {
         if (current == null) {
-            rootUri?.let { saved ->
-                try { fm.fromTree(android.net.Uri.parse(saved))?.let { load(it) } } catch (_: Exception) {}
+            // Restore from saved state, else from prefs (survives app restart/update)
+            val saved = rootUri ?: context.getSharedPreferences("devbox_files", android.content.Context.MODE_PRIVATE)
+                .getString("root_uri", null)
+            saved?.let {
+                rootUri = it
+                try { fm.fromTree(android.net.Uri.parse(it))?.let { dir -> load(dir) } } catch (_: Exception) {}
             }
         }
     }
@@ -50,6 +54,8 @@ fun FilesScreen() {
         if (uri != null) {
             try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) } catch (_: Exception) {}
             rootUri = uri.toString()
+            context.getSharedPreferences("devbox_files", android.content.Context.MODE_PRIVATE)
+                .edit().putString("root_uri", uri.toString()).apply()
             fm.fromTree(uri)?.let { load(it) }
         }
     }

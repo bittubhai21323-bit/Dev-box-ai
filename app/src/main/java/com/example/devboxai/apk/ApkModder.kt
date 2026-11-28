@@ -21,6 +21,11 @@ class ApkModder(private val context: Context) {
 
     data class Step(val ok: Boolean, val log: String)
 
+    private fun toolHint(out: String): String =
+        if (out.contains("command not found") || out.contains("No such file"))
+            "\n⚠ Tool nahi mila — APK tab ke Settings me 'Install in Termux' dabao, install pura hone do (2-3 minute), phir dubara try karo."
+        else ""
+
     suspend fun ensureWorkspace(): Step = withContext(Dispatchers.IO) {
         val r = TermuxHelper.runAndWait(context, "mkdir -p $WORK_DIR && rm -rf $DECODED_DIR && echo READY")
         if (r == null) return@withContext Step(false, "Termux se jawab nahi aaya. ${TermuxHelper.lastError ?: ""} — Termux permission aur allow-external-apps check karo")
@@ -42,34 +47,34 @@ class ApkModder(private val context: Context) {
         val r = TermuxHelper.runAndWait(context, "cd $WORK_DIR && rm -rf decoded && apktool d -f input.apk -o decoded 2>&1 && echo __DONE__")
         if (r == null) return@withContext Step(false, "Termux se jawab nahi aaya (timeout). ${TermuxHelper.lastError ?: ""} — Termux permission aur allow-external-apps check karo")
         val ok = r.stdout.contains("__DONE__") || r.exit == 0
-        Step(ok, "exit=${r.exit}\n${r.stdout.takeLast(1500)}\n${r.stderr.takeLast(800)}")
+        Step(ok, "exit=${r.exit}\n${r.stdout.takeLast(1500)}\n${r.stderr.takeLast(800)}${toolHint(r.stdout + r.stderr)}")
     }
 
     suspend fun recompile(): Step = withContext(Dispatchers.IO) {
         val r = TermuxHelper.runAndWait(context, "cd $WORK_DIR && rm -f unsigned.apk && apktool b decoded -o unsigned.apk 2>&1 && echo __DONE__")
         if (r == null) return@withContext Step(false, "Termux se jawab nahi aaya (timeout). ${TermuxHelper.lastError ?: ""} — Termux permission aur allow-external-apps check karo")
         val ok = r.stdout.contains("__DONE__") && File(UNSIGNED_APK).exists()
-        Step(ok, "exit=${r.exit}\n${r.stdout.takeLast(1500)}\n${r.stderr.takeLast(800)}")
+        Step(ok, "exit=${r.exit}\n${r.stdout.takeLast(1500)}\n${r.stderr.takeLast(800)}${toolHint(r.stdout + r.stderr)}")
     }
 
     suspend fun zipalign(): Step = withContext(Dispatchers.IO) {
         val r = TermuxHelper.runAndWait(context, "cd $WORK_DIR && rm -f aligned.apk && zipalign -p -f 4 unsigned.apk aligned.apk && echo __DONE__")
         if (r == null) return@withContext Step(false, "Termux se jawab nahi aaya (timeout). ${TermuxHelper.lastError ?: ""} — Termux permission aur allow-external-apps check karo")
         val ok = r.stdout.contains("__DONE__") && File(ALIGNED_APK).exists()
-        Step(ok, "exit=${r.exit}\n${r.stdout.takeLast(800)}")
+        Step(ok, "exit=${r.exit}\n${r.stdout.takeLast(800)}${toolHint(r.stdout + r.stderr)}")
     }
 
     suspend fun sign(password: String, alias: String = "devbox"): Step = withContext(Dispatchers.IO) {
         val r = TermuxHelper.runAndWait(context, "cd $WORK_DIR && rm -f signed.apk && apksigner sign --ks devbox_keystore.p12 --ks-pass pass:$password --ks-key-alias $alias --out signed.apk aligned.apk 2>&1 && echo __DONE__")
         if (r == null) return@withContext Step(false, "Termux se jawab nahi aaya (timeout). ${TermuxHelper.lastError ?: ""} — Termux permission aur allow-external-apps check karo")
         val ok = r.stdout.contains("__DONE__") && File(SIGNED_APK).exists()
-        Step(ok, "exit=${r.exit}\n${r.stdout.takeLast(1200)}\n${r.stderr.takeLast(800)}")
+        Step(ok, "exit=${r.exit}\n${r.stdout.takeLast(1200)}\n${r.stderr.takeLast(800)}${toolHint(r.stdout + r.stderr)}")
     }
 
     suspend fun verify(): Step = withContext(Dispatchers.IO) {
         val r = TermuxHelper.runAndWait(context, "cd $WORK_DIR && apksigner verify --verbose signed.apk 2>&1")
         if (r == null) return@withContext Step(false, "Termux se jawab nahi aaya (timeout). ${TermuxHelper.lastError ?: ""} — Termux permission aur allow-external-apps check karo")
-        Step(r.exit == 0, "exit=${r.exit}\n${r.stdout}\n${r.stderr}")
+        Step(r.exit == 0, "exit=${r.exit}\n${r.stdout}\n${r.stderr}${toolHint(r.stdout + r.stderr)}")
     }
 
     suspend fun listDir(relativePath: String = ""): List<FileNode> = withContext(Dispatchers.IO) {
