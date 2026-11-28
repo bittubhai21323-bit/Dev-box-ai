@@ -1,5 +1,7 @@
 package com.example.devboxai.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,6 +36,16 @@ fun TermuxToolsScreen() {
     val categories = remember { listOf("All") + ToolsCatalog.tools.map { it.category }.distinct().sorted() }
     val filtered = remember(selectedCategory) { if (selectedCategory == "All") ToolsCatalog.tools else ToolsCatalog.tools.filter { it.category == selectedCategory } }
 
+    // Termux RUN_COMMAND is a runtime permission; reinstalling the app resets it.
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        busy = false
+        output = if (granted)
+            "✓ Termux permission mil gayi.\nAb dobara Run dabao."
+        else
+            "✗ Permission nahi mili.\nSettings > Apps > DevBox AI > Permissions me jaake Termux permission Allow karo, phir dobara try karo."
+        showOutput = true
+    }
+
     LaunchedEffect(Unit) {
         TermuxResultBus.results.collect { r ->
             busy = false
@@ -53,8 +65,13 @@ fun TermuxToolsScreen() {
                 if (!TermuxHelper.openTermux(context)) { output = "Termux not installed.\nF-Droid se install karo."; showOutput = true }
             }) { Icon(Icons.Default.OpenInNew, null); Spacer(Modifier.width(4.dp)); Text("Open Termux") }
             OutlinedButton(onClick = {
-                TermuxHelper.installPackages(context, ToolsCatalog.installList)
-                output = "Installing tools... check Termux app."; showOutput = true
+                if (!TermuxHelper.hasRunPermission(context)) {
+                    permLauncher.launch(TermuxHelper.RUN_PERMISSION)
+                } else if (TermuxHelper.installPackages(context, ToolsCatalog.installList)) {
+                    output = "Installing tools... check Termux app."; showOutput = true
+                } else {
+                    output = "Termux command failed:\n${TermuxHelper.lastError ?: "unknown error"}"; showOutput = true
+                }
             }) { Text("Install tools") }
         }
         Text(if (TermuxHelper.isTermuxInstalled(context)) "✓ Termux installed" else "✗ Termux not installed", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
@@ -66,8 +83,19 @@ fun TermuxToolsScreen() {
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(filtered) { tool ->
                 ToolCard(tool) { cmd ->
-                    busy = true; output = "Running:\n$cmd"; showOutput = true
-                    if (!TermuxHelper.runWithResult(context, cmd)) { busy = false; output = "Termux command failed." }
+                    if (!TermuxHelper.hasRunPermission(context)) {
+                        output = "Termux permission chahiye — Allow karo, phir dobara Run dabao."
+                        showOutput = true
+                        permLauncher.launch(TermuxHelper.RUN_PERMISSION)
+                    } else {
+                        busy = true; output = "Running:\n$cmd"; showOutput = true
+                        if (!TermuxHelper.runWithResult(context, cmd)) {
+                            busy = false
+                            output = "Termux command failed:\n${TermuxHelper.lastError ?: "unknown error"}\n\n" +
+                                "Check karo: Termux me allow-external-apps=true hai ya nahi " +
+                                "(~/.termux/termux.properties), aur Termux app ek baar khula ho."
+                        }
+                    }
                 }
             }
         }

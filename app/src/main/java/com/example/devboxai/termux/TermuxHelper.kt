@@ -3,7 +3,9 @@ package com.example.devboxai.termux
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,6 +19,15 @@ object TermuxHelper {
     private const val TERMUX_SERVICE = "com.termux.app.RunCommandService"
     private const val BASH_PATH = "/data/data/com.termux/files/usr/bin/bash"
     private const val HOME = "/data/data/com.termux/files/home"
+
+    const val RUN_PERMISSION = "com.termux.permission.RUN_COMMAND"
+
+    /** Last failure reason, so the UI can show WHY a command failed. */
+    var lastError: String? = null
+        private set
+
+    fun hasRunPermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, RUN_PERMISSION) == PackageManager.PERMISSION_GRANTED
 
     fun isTermuxInstalled(context: Context): Boolean =
         try { context.packageManager.getPackageInfo(TERMUX_PKG, 0); true }
@@ -32,8 +43,8 @@ object TermuxHelper {
         val intent = baseIntent().apply {
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
         }
-        context.startService(intent); true
-    } catch (e: Exception) { Log.e("TermuxHelper", "run", e); false }
+        context.startService(intent); lastError = null; true
+    } catch (e: Exception) { Log.e("TermuxHelper", "run", e); lastError = "${e.javaClass.simpleName}: ${e.message}"; false }
 
     fun runWithResult(
         context: Context,
@@ -51,8 +62,8 @@ object TermuxHelper {
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
             putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending)
         }
-        context.startService(intent); true
-    } catch (e: Exception) { Log.e("TermuxHelper", "runWithResult", e); false }
+        context.startService(intent); lastError = null; true
+    } catch (e: Exception) { Log.e("TermuxHelper", "runWithResult", e); lastError = "${e.javaClass.simpleName}: ${e.message}"; false }
 
     suspend fun runAndWait(
         context: Context,
