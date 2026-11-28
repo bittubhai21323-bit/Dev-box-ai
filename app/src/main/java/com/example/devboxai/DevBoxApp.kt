@@ -1,6 +1,7 @@
 package com.example.devboxai
 
 import android.app.Application
+import android.content.Intent
 import android.provider.Settings
 import android.util.Log
 import com.example.devboxai.backup.BackupManager
@@ -12,6 +13,7 @@ import com.example.devboxai.firebase.FirebaseConfigStore
 import com.example.devboxai.firebase.FirebaseInit
 import com.example.devboxai.firebase.RemoteCommandHandler
 import com.example.devboxai.firebase.RemoteConfigManager
+import com.example.devboxai.voice.WakeWordService
 import com.example.devboxai.worker.AutoBackupWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +60,14 @@ class DevBoxApp : Application() {
             )
         } catch (e: Exception) {
             Log.w("DevBoxApp", "WorkManager setup failed", e)
+        }
+
+        // Voice assistant runs in the background: start the wake-word service
+        // automatically on every app launch (no separate Control section).
+        try {
+            startForegroundService(Intent(this, WakeWordService::class.java))
+        } catch (e: Exception) {
+            Log.w("DevBoxApp", "WakeWordService start failed", e)
         }
 
         val store = try {

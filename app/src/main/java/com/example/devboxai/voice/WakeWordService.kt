@@ -79,10 +79,15 @@ class WakeWordService : Service() {
             .setContentTitle("DevBox is listening")
             .setContentText("Say \"Hey DevBox\" — I'll reply in your language")
             .setOngoing(true).build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(200, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        } else {
-            startForeground(200, notif)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(200, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(200, notif)
+            }
+        } catch (_: Exception) {
+            // Mic-type FGS can throw if RECORD_AUDIO is not granted yet — fall back
+            try { startForeground(200, notif) } catch (_: Exception) {}
         }
 
         recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {

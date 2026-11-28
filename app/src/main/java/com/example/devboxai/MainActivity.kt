@@ -1,8 +1,10 @@
 package com.example.devboxai
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -50,7 +52,6 @@ private fun Root() {
         listOf(
             Triple("hud",          "HUD",     Icons.Default.Radar),
             Triple("chat",         "AI",      Icons.Default.Chat),
-            Triple("voice",        "Control", Icons.Default.Mic),
             Triple("security",     "Shield",  Icons.Default.Shield),
             Triple("productivity", "Tasks",   Icons.Default.CheckCircle),
             Triple("files",        "Files",   Icons.Default.Folder),
@@ -73,6 +74,17 @@ private fun Root() {
         val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
         permLauncher.launch(perms.toTypedArray())
+        // Keep the background voice service alive: ask for battery-optimization exemption once
+        try {
+            val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(context.packageName)) {
+                context.startActivity(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(android.net.Uri.parse("package:${context.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+        } catch (_: Exception) {}
     }
 
     Scaffold(
@@ -127,7 +139,6 @@ private fun Root() {
             ) }
             composable("terminal")     { TerminalScreen() }
             composable("chat")         { ChatScreen() }
-            composable("voice")        { VoiceControlScreen() }
             composable("security")     { SecurityScreen() }
             composable("productivity") { ProductivityScreen() }
             composable("files")        { FilesScreen() }

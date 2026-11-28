@@ -7,11 +7,19 @@ import java.util.Locale
 
 class MultilingualTts(context: Context) : TextToSpeech.OnInitListener {
 
+    companion object {
+        /** Boss wants answers slow and clear, not fast. */
+        const val SPEECH_RATE = 0.82f
+    }
+
     private val tts = TextToSpeech(context.applicationContext, this)
     private var ready = false
 
     override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) ready = true
+        if (status == TextToSpeech.SUCCESS) {
+            tts.setSpeechRate(SPEECH_RATE) // slow, clear replies (Boss's preference)
+            ready = true
+        }
     }
 
     fun speak(text: String, langTag: String) {
@@ -29,6 +37,7 @@ class MultilingualTts(context: Context) : TextToSpeech.OnInitListener {
             }
         }
         Log.d("MultilingualTts", "speak lang=$langTag used=${used.toLanguageTag()}")
+        tts.setSpeechRate(SPEECH_RATE)
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ml_tts_${System.nanoTime()}")
     }
 
