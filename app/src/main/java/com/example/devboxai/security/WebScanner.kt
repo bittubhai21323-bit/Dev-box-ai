@@ -551,6 +551,80 @@ object WebScanner {
             }
         } catch (_: Exception) { }
 
+        // DNS extras: IPv6, CAA, DKIM
+        try {
+            val aaaa = doh(host, "AAAA")
+            if (aaaa.isNotEmpty()) sb.append("IPv6: ${aaaa.joinToString(", ")}\n")
+            val caa = doh(host, "CAA")
+            if (caa.isNotEmpty()) sb.append("✓ CAA record hai (certificate par rok hai)\n")
+            val dkim = doh("default._domainkey.$host", "TXT")
+            if (dkim.isNotEmpty()) sb.append("✓ DKIM hai (email signature)\n")
+        } catch (_: Exception) { }
+
+        // Meta generator (version disclosure)
+        try {
+            val req = Request.Builder().url(baseUrl)
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                sb.append("Protocol: ${res.protocol}\n")
+                val enc = res.header("Content-Encoding") ?: ""
+                if (enc.isNotBlank()) sb.append("Compression: $enc\n")
+                val html = (res.body?.string() ?: "").take(200_000)
+                val gen = Regex("""<meta[^>]+name\s*=\s*["']generator["'][^>]+content\s*=\s*["']([^"']+)""", RegexOption.IGNORE_CASE)
+                    .find(html)?.groupValues?.getOrNull(1)
+                if (!gen.isNullOrBlank()) {
+                    sb.append("Generator: $gen\n")
+                    findings += "Generator tag version bata raha hai ($gen) — purana hai to uske bugs use ho sakte hai"
+                }
+                // API endpoints hidden in page/JS
+                val eps = Regex("""["'](/(?:api|v1|v2|graphql|rest)/[a-zA-Z0-9/_-]{1,60})["']""").findAll(html)
+                    .map { it.groupValues[1] }.distinct().take(10).toList()
+                if (eps.isNotEmpty()) sb.append("Page me mile API raste: ${eps.joinToString(", ")}\n")
+                // First JS file: endpoints + source map
+                val jsSrc = Regex("""<script[^>]+src\s*=\s*["']([^"']+\.js)["']""", RegexOption.IGNORE_CASE)
+                    .find(html)?.groupValues?.getOrNull(1)
+                if (!jsSrc.isNullOrBlank()) {
+                    val jsUrl = try { URL(URL(baseUrl), jsSrc).toString() } catch (_: Exception) { "" }
+                    if (jsUrl.isNotBlank()) {
+                        try {
+                            val jreq = Request.Builder().url(jsUrl)
+                                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                            client.newCall(jreq).execute().use { jres ->
+                                val js = (jres.body?.string() ?: "").take(300_000)
+                                val jeps = Regex("""["'](/(?:api|v1|v2|graphql|rest)/[a-zA-Z0-9/_-]{1,60})["']""").findAll(js)
+                                    .map { it.groupValues[1] }.distinct().take(10).toList()
+                                if (jeps.isNotEmpty()) sb.append("JS file me mile API raste: ${jeps.joinToString(", ")}\n")
+                                if (Regex("""(api[_-]?key|secret|token)\s*[:=]\s*["'][A-Za-z0-9_-]{16,}""", RegexOption.IGNORE_CASE).containsMatchIn(js)) {
+                                    findings += "JS file me API key/secret jaisi cheez dikhi — sabko mil sakti hai"
+                                }
+                            }
+                            val mreq = Request.Builder().url("$jsUrl.map").head()
+                                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                            client.newCall(mreq).execute().use { mres ->
+                                if (mres.code == 200) findings += "Source map (.js.map) khula hai — website ka asal source code mil sakta hai"
+                            }
+                        } catch (_: Exception) { }
+                    }
+                }
+                val lower = html.lowercase()
+                if (lower.contains("type=\"file\"")) sb.append("📤 Page par file upload wala form hai\n")
+                if (lower.contains("recaptcha") || lower.contains("hcaptcha")) sb.append("✓ Captcha hai (bot rokne ke liye)\n")
+                else if (lower.contains("type=\"password\"")) findings += "Login form par captcha nahi hai — bot baar-baar password try kar sakta hai"
+            }
+        } catch (_: Exception) { }
+
+        // Wayback Machine: purane snapshot
+        try {
+            val req = Request.Builder().url("https://archive.org/wayback/available?url=$host")
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                val body = res.body?.string() ?: ""
+                if (body.contains("\"available\": true") || body.contains("\"available\":true")) {
+                    sb.append("🕰 Wayback Machine par is website ka purana snapshot hai\n")
+                }
+            }
+        } catch (_: Exception) { }
+
         // Subdomains via crt.sh (public certificate logs)
         try {
             val root = host.removePrefix("www.")
