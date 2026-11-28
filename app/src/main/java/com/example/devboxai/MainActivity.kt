@@ -66,6 +66,16 @@ private fun Root() {
     val current = backStack?.destination?.route
     val selected = items.indexOfFirst { it.first == current }.coerceAtLeast(0)
 
+    // Bottom-nav style navigation: keep each tab's state saved so switching
+    // pages does not restart the previous page from scratch.
+    fun goTab(route: String) {
+        nav.navigate(route) {
+            popUpTo(nav.graph.startDestinationId) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {}
@@ -124,7 +134,7 @@ private fun Root() {
                 items.forEachIndexed { i, (route, label, icon) ->
                     NavigationBarItem(
                         selected = selected == i,
-                        onClick = { nav.navigate(route) { launchSingleTop = true } },
+                        onClick = { goTab(route) },
                         icon = { Icon(icon, label) },
                         label = { Text(label) }
                     )
@@ -135,7 +145,7 @@ private fun Root() {
         NavHost(nav, startDestination = "hud", modifier = Modifier.padding(pad)) {
             composable("hud")          { HudScreen(
                 onOpenTerminal = { nav.navigate("terminal") { launchSingleTop = true } },
-                onNavigate = { route -> nav.navigate(route) { launchSingleTop = true } }
+                onNavigate = { route -> goTab(route) }
             ) }
             composable("terminal")     { TerminalScreen() }
             composable("chat")         { ChatScreen() }
