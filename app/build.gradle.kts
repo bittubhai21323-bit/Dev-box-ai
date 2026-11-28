@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -14,7 +16,7 @@ if (!debugKeystoreFile.exists()) {
     val b64File = file("debug.keystore.b64")
     if (b64File.exists()) {
         debugKeystoreFile.writeBytes(
-            java.util.Base64.getMimeDecoder().decode(b64File.readText())
+            Base64.getMimeDecoder().decode(b64File.readText())
         )
     }
 }
