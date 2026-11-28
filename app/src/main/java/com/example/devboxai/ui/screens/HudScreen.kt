@@ -169,9 +169,9 @@ fun HudScreen(
             } catch (_: Throwable) {}
             if (tick % 3 == 0) {
                 val stamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                val line = "> [$stamp] CPU ${(cpuLoad * 100).toInt()}%% • MEM %.1fGB • RX %.1fMB • TX %.1fMB"
-                    .format(memUsedGb, rxMb, txMb)
-                liveLog = (liveLog + line).takeLast(5)
+                val line = "> [$stamp] CPU ${(cpuLoad * 100).toInt()}%% • MEM %.1fGB"
+                    .format(memUsedGb)
+                liveLog = (liveLog + line).takeLast(4)
             }
           } catch (t: Throwable) {
               liveLog = (liveLog + "> ⚠ ${t.javaClass.simpleName}: ${t.message}").takeLast(5)
@@ -348,26 +348,26 @@ fun HudScreen(
             }
         }
 
-        // Bottom-left: terminal log panel of the photo
-        Patch(Modifier.offset(x = ox + imgW * 0.035f, y = oy + imgH * 0.520f).width(imgW * 0.215f)) {
+        // Bottom-left: terminal log panel of the photo (fixed height, never overlaps the ACCESS bar)
+        Patch(Modifier.offset(x = ox + imgW * 0.030f, y = oy + imgH * 0.520f).width(imgW * 0.245f).height(imgH * 0.315f)) {
             bootLines.forEach { line ->
-                Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = fs(0.021f))
+                Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = fs(0.020f))
             }
             if (scanReport.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text(scanReport, color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = fs(0.021f))
+                Text(scanReport, color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = fs(0.020f))
             }
             if (liveLog.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
-                Text("LIVE FEED:", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = fs(0.021f))
+                Text("LIVE FEED:", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = fs(0.020f))
                 liveLog.forEach { line ->
-                    Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = fs(0.018f))
+                    Text(line, color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = fs(0.017f))
                 }
             }
         }
 
-        // Bottom-right: CPU/MEM panel of the photo
-        Patch(Modifier.offset(x = ox + imgW * 0.725f, y = oy + imgH * 0.680f).width(imgW * 0.23f)) {
+        // Bottom-right: CPU/MEM panel of the photo (fixed height, never overlaps the ACCESS bar)
+        Patch(Modifier.offset(x = ox + imgW * 0.715f, y = oy + imgH * 0.680f).width(imgW * 0.245f).height(imgH * 0.155f)) {
             Text("CPU LOAD: ${(cpuLoad * 100).toInt()}%", color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = fs(0.028f))
             HudBar(cpuLoad)
             Spacer(Modifier.height(5.dp))
@@ -382,7 +382,7 @@ fun HudScreen(
                 color = HudCyan, fontFamily = FontFamily.Monospace, fontSize = fs(0.024f)
             )
             Text(
-                "PACKETS: %.1f MB RX | %.1f MB TX".format(rxMb, txMb),
+                "PACKETS:\nRX %.0fMB | TX %.0fMB".format(rxMb, txMb),
                 color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = fs(0.024f)
             )
         }
@@ -397,10 +397,10 @@ fun HudScreen(
         }
 
         // Version line of the photo
-        Patch(Modifier.offset(x = ox + imgW * 0.060f, y = oy + imgH * 0.893f).width(imgW * 0.33f)) {
+        Patch(Modifier.offset(x = ox + imgW * 0.060f, y = oy + imgH * 0.893f).width(imgW * 0.44f)) {
             Text(
                 "DEVBOX AI v11.0 — SECURE MODE",
-                color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = fs(0.022f), maxLines = 1
+                color = HudGreen, fontFamily = FontFamily.Monospace, fontSize = fs(0.020f), maxLines = 1
             )
         }
 
