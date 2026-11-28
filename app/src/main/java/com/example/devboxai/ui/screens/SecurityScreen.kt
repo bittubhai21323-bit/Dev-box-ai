@@ -31,7 +31,7 @@ fun SecurityScreen() {
     val guardian = remember { ProcessGuardian(context, app.db.blockedAppDao(), app.db.securityLogDao()) }
 
     var tab by rememberSaveable { mutableStateOf(0) }
-    val tabs = listOf("Blocked", "Scanner", "Logs", "Root Ops")
+    val tabs = listOf("Blocked", "Scanner", "Web Scan", "Logs", "Root Ops")
 
     Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab) {
@@ -40,8 +40,9 @@ fun SecurityScreen() {
         when (tab) {
             0 -> BlockedTab(app, blocker, scope)
             1 -> ScannerTab(guardian, scope)
-            2 -> LogsTab(app)
-            3 -> RootOpsTab(context)
+            2 -> WebScanTab(scope)
+            3 -> LogsTab(app)
+            4 -> RootOpsTab(context)
         }
     }
 }
@@ -130,6 +131,38 @@ private fun ScannerTab(guardian: ProcessGuardian, scope: kotlinx.coroutines.Coro
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WebScanTab(scope: kotlinx.coroutines.CoroutineScope) {
+    var url by rememberSaveable { mutableStateOf("") }
+    var report by rememberSaveable { mutableStateOf("") }
+    var scanning by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Text("🌐 Website Scan — URL dalo, website ki jaankari aur security grade milega", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = url, onValueChange = { url = it },
+            label = { Text("Website URL (jaise https://example.com)") },
+            modifier = Modifier.fillMaxWidth(), singleLine = true
+        )
+        Button(
+            onClick = {
+                scanning = true; report = "Scan ho raha hai…"
+                scope.launch {
+                    report = com.example.devboxai.security.WebScanner.scan(url)
+                    scanning = false
+                }
+            },
+            enabled = !scanning && url.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (scanning) "Scanning…" else "Scan karo") }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            report, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+        )
     }
 }
 

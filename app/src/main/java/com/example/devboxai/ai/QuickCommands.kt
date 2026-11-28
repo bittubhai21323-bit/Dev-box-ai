@@ -73,6 +73,7 @@ object QuickCommands {
                 /system — poori system report
                 /apk edit <kya badalna hai> — AI se APK edit karo
                 /apk build — edited APK ko rebuild + sign karo
+                /scan <url> — kisi website ko URL se scan karo
             """.trimIndent()
 
             "mausam", "weather" -> {
@@ -90,6 +91,11 @@ object QuickCommands {
                         "Mausam nahi mila (internet check karo)"
                     }
                 }
+            }
+
+            "scan", "webscan" -> {
+                if (arg.isBlank()) "Website ka URL likho, jaise: /scan https://example.com"
+                else com.example.devboxai.security.WebScanner.scan(arg)
             }
 
             "calc", "hisaab" -> {
