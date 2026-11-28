@@ -229,12 +229,74 @@ object WebScanner {
 
             sb.append("\n⚠ Kamiyan (${findings.size}):\n")
             if (findings.isEmpty()) sb.append("✓ Koi badi kami nahi mili — website theek se secure hai\n")
-            else findings.forEachIndexed { i, f -> sb.append("${i + 1}. $f\n") }
+            else {
+                val grouped = findings.groupBy { categoryFor(it) }
+                for ((cat, list) in grouped) {
+                    sb.append("\n$cat (${list.size}):\n")
+                    list.forEachIndexed { i, f ->
+                        sb.append("${i + 1}. $f\n   → Upay: ${fixFor(f)}\n")
+                    }
+                }
+            }
         } catch (e: Exception) {
             sb.append("\n✗ Scan fail: ${e.message}\n")
             sb.append("Check karo: URL sahi hai? Internet chal raha hai?")
         }
         sb.toString()
+    }
+
+    private fun categoryFor(f: String): String = when {
+        listOf("SSL", "TLS", "certificate", "cipher", "HTTPS", "encryption").any { f.contains(it, ignoreCase = true) } -> "🔒 SSL/HTTPS kamiyan"
+        listOf("header", "CSP", "HSTS", "Referrer").any { f.contains(it, ignoreCase = true) } -> "🛡 Security Header kamiyan"
+        f.contains("cookie", ignoreCase = true) -> "🍪 Cookie kamiyan"
+        listOf("port", "Docker", "Elasticsearch", "database", "MongoDB", "Redis", "MySQL").any { f.contains(it, ignoreCase = true) } -> "🔌 Port/Service kamiyan"
+        listOf(".env", ".git", "backup", "source map", "composer", "package.json", "khula hai", "Directory listing").any { f.contains(it, ignoreCase = true) } -> "📁 Khuli File kamiyan"
+        listOf("SPF", "DMARC", "DKIM", "email").any { f.contains(it, ignoreCase = true) } -> "📧 Email Security kamiyan"
+        listOf("WordPress", "jQuery", "Generator", "version").any { f.contains(it, ignoreCase = true) } -> "🧩 Purani Technology kamiyan"
+        listOf("password", "captcha", "form", "login").any { f.contains(it, ignoreCase = true) } -> "🔑 Login/Form kamiyan"
+        else -> "⚠ Dusri kamiyan"
+    }
+
+    private fun fixFor(f: String): String = when {
+        f.contains("HTTPS nahi") -> "SSL certificate lagao (Let's Encrypt free hai) aur http ko https par redirect karo"
+        f.contains("Strict-Transport-Security") && f.contains("gayab") -> "Header lagao: Strict-Transport-Security: max-age=31536000; includeSubDomains"
+        f.contains("HSTS") -> "HSTS ko max-age=31536000; includeSubDomains; preload karo"
+        f.contains("Content-Security-Policy") && f.contains("gayab") -> "Content-Security-Policy header lagao, sirf apni site se script allow karo"
+        f.contains("unsafe-inline") || f.contains("unsafe-eval") -> "CSP se unsafe-inline/unsafe-eval hatao, nonce ya hash use karo"
+        f.contains("wildcard") -> "CSP me * ki jagah sirf bharosemand sites ke naam likho"
+        f.contains("frame-ancestors") -> "CSP me frame-ancestors 'self' lagao"
+        f.contains("X-Frame-Options") -> "Header lagao: X-Frame-Options: SAMEORIGIN"
+        f.contains("X-Content-Type-Options") -> "Header lagao: X-Content-Type-Options: nosniff"
+        f.contains("Referrer-Policy") -> "Header lagao: Referrer-Policy: strict-origin-when-cross-origin"
+        f.contains("Permissions-Policy") -> "Header lagao: Permissions-Policy: camera=(), microphone=(), geolocation=()"
+        f.contains("Secure flag") -> "Cookie par Secure flag lagao"
+        f.contains("HttpOnly") -> "Cookie par HttpOnly flag lagao"
+        f.contains("SameSite") -> "Cookie par SameSite=Lax lagao"
+        f.contains("EXPIRE") || f.contains("expire hoga") -> "SSL certificate renew karo (auto-renew on rakho)"
+        f.contains("SHA1") || f.contains("self-signed") || f.contains("RSA key") -> "Naya SHA-256 certificate lo (Let's Encrypt free hai), key 2048-bit rakho"
+        f.contains("cipher") || f.contains("TLS") -> "Server par sirf TLS 1.2/1.3 aur majboot cipher rakho, purane band karo"
+        f.contains("port") || f.contains("Docker") || f.contains("Elasticsearch") -> "Port ko firewall se band karo, sirf apne IP ko allow karo, password lagao"
+        f.contains(".env") || f.contains(".git") || f.contains("backup") || f.contains("khula hai") -> "File ko public folder se hatao ya server par is raste ko block karo"
+        f.contains("source map") -> "Production se .js.map file hatao"
+        f.contains("SPF") -> "DNS me SPF record lagao: v=spf1 include:... -all"
+        f.contains("DMARC") -> "DNS me DMARC record lagao: v=DMARC1; p=reject"
+        f.contains("jQuery") -> "jQuery ko latest 3.x version par update karo"
+        f.contains("WordPress") -> "WordPress update karo, user list wali API band karo"
+        f.contains("Generator") || f.contains("version dikh") -> "Version dikhane wale tag/header hatao, software update rakho"
+        f.contains("password") && f.contains("HTTPS") -> "Login page ko HTTPS par le jao"
+        f.contains("captcha") -> "Login form par captcha lagao (reCAPTCHA/hCaptcha)"
+        f.contains("eval()") -> "eval() hatao, surakshit tarika use karo"
+        f.contains("Mixed content") || f.contains("http://") -> "Saare resource https:// se load karo"
+        f.contains("Directory listing") -> "Server par directory listing band karo (Options -Indexes)"
+        f.contains("CORS") -> "CORS me sirf apni website ko allow karo, sabko nahi"
+        f.contains("Debug") || f.contains("Error page") -> "Production me debug mode band karo, error ki detail mat dikhao"
+        f.contains("SRI") || f.contains("integrity") -> "Script tag me integrity hash lagao"
+        f.contains("noopener") -> "Link me rel=\"noopener\" lagao"
+        f.contains("API key") || f.contains("secret") -> "Key ko server side rakho, browser wali JS me kabhi mat rakho"
+        f.contains("WAF") -> "Cloudflare jaisi WAF/CDN parat lagao (free plan bhi hai)"
+        f.contains("HTTP methods") -> "Server par sirf GET/POST/HEAD rakho, PUT/DELETE/TRACE band karo"
+        f.contains("Server ka version") || f.contains("X-Powered-By") -> "Server header se version hatao (ServerTokens Prod / expose_php Off)"
+        else -> "Developer se is kami ko band karwao"
     }
 
     private fun statusText(code: Int): String = when (code) {
