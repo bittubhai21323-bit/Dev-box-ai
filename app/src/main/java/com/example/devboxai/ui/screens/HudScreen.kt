@@ -222,26 +222,23 @@ fun HudScreen(
             )
         }
 
-        // Big rotating HUD ring around the hacker (centre, like the photo)
+        // Rotating sweep ring over the photo's HUD ring (subtle, keeps it alive)
         Canvas(
-            Modifier.size(350.dp).align(Alignment.Center).offset(y = (-70).dp).rotate(rotation)
+            Modifier.size(360.dp).align(Alignment.Center).offset(y = (-60).dp).rotate(rotation)
         ) {
             val r = size.minDimension / 2f
-            drawCircle(HudCyan.copy(alpha = 0.45f), radius = r, style = Stroke(2.5f))
-            drawCircle(HudGreen.copy(alpha = 0.38f), radius = r * 0.84f, style = Stroke(2f))
-            drawCircle(HudCyan.copy(alpha = 0.28f), radius = r * 0.66f, style = Stroke(1.5f))
+            drawCircle(HudCyan.copy(alpha = 0.30f), radius = r, style = Stroke(1.5f))
             for (i in 0 until 36) {
                 val angle = Math.toRadians((i * 10).toDouble())
-                val inner = if (i % 3 == 0) r * 0.90f else r * 0.95f
+                val inner = if (i % 3 == 0) r * 0.93f else r * 0.97f
                 drawLine(
-                    HudGreen.copy(alpha = 0.6f),
+                    HudGreen.copy(alpha = 0.45f),
                     Offset(center.x + (inner * kotlin.math.cos(angle)).toFloat(), center.y + (inner * kotlin.math.sin(angle)).toFloat()),
                     Offset(center.x + (r * kotlin.math.cos(angle)).toFloat(), center.y + (r * kotlin.math.sin(angle)).toFloat()),
                     strokeWidth = 2f
                 )
             }
-            drawCircle(HudGreen, radius = 6f, center = Offset(center.x + r, center.y))
-            drawCircle(HudCyan, radius = 4f, center = Offset(center.x - r * 0.84f, center.y))
+            drawCircle(HudGreen, radius = 5f, center = Offset(center.x + r, center.y))
         }
 
         // Greeting + title (top centre, Maya-style)
