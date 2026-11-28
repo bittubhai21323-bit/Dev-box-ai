@@ -147,7 +147,7 @@ fun HudScreen(onOpenTerminal: () -> Unit = {}) {
             } catch (_: Throwable) {}
             if (tick % 3 == 0) {
                 val stamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                val line = "> [$stamp] CPU ${(cpuLoad * 100).toInt()}% • MEM %.1fGB • RX %.1fMB • TX %.1fMB"
+                val line = "> [$stamp] CPU ${(cpuLoad * 100).toInt()}%% • MEM %.1fGB • RX %.1fMB • TX %.1fMB"
                     .format(memUsedGb, rxMb, txMb)
                 liveLog = (liveLog + line).takeLast(5)
             }

@@ -61,12 +61,24 @@ class UpdateManager(private val context: Context) {
                 if (stamp.isBlank() || url.isBlank()) return@withContext UpdateInfo(false)
                 val prefs = context.getSharedPreferences("devbox_update", Context.MODE_PRIVATE)
                 val stored = prefs.getString(PREF_STAMP, null)
-                if (stored == null) {
-                    prefs.edit().putString(PREF_STAMP, stamp).apply()
-                    return@withContext UpdateInfo(false, apkUrl = url)
+                // If we never recorded an install stamp, compare the release
+                // asset time with this APK's last-update time instead of
+                // blindly treating the current build as up-to-date.
+                val available = if (stored != null) {
+                    stored != stamp
+                } else {
+                    val assetTime = try {
+                        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                            .parse(stamp)?.time ?: 0L
+                    } catch (_: Exception) { 0L }
+                    val installedAt = try {
+                        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+                    } catch (_: Exception) { 0L }
+                    assetTime > installedAt + 120_000
                 }
                 UpdateInfo(
-                    available = stored != stamp,
+                    available = available,
                     versionName = "naya build",
                     apkUrl = url,
                     changelog = "Stamp: $stamp"
