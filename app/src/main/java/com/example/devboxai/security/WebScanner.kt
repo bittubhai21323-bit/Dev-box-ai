@@ -144,6 +144,15 @@ object WebScanner {
                 if (mixed > 0) findings += "Mixed content: page me $mixed jagah http:// (bina secure) wale resource hai"
             }
             certFindings(current).forEach { findings += it }
+            if (bodyText.contains("Index of /")) {
+                findings += "Directory listing khuli hai — server ki file list sabko dikh rahi hai"
+            }
+
+            // ---- Deep scan ----
+            val host = try { URL(current).host } catch (_: Exception) { "" }
+            if (host.isNotBlank()) {
+                sb.append(deepScan(host, current, findings))
+            }
 
             sb.append("\n⚠ Kamiyan (${findings.size}):\n")
             if (findings.isEmpty()) sb.append("✓ Koi badi kami nahi mili — website theek se secure hai\n")
@@ -193,6 +202,129 @@ object WebScanner {
         "Referrer-Policy" -> "dusri sites ko pata chalta hai user kahan se aaya"
         "Permissions-Policy" -> "camera/mic/location jaise feature bina rok ke use ho sakte hai"
         else -> "security kamzor hoti hai"
+    }
+
+    /** Deep checks: DNS records, TLS protocol, HTTP methods, exposed paths, subdomains. */
+    private fun deepScan(host: String, baseUrl: String, findings: MutableList<String>): String {
+        val sb = StringBuilder("\n🔍 Deep Scan:\n")
+
+        // DNS records via Cloudflare DoH
+        try {
+            val a = doh(host, "A")
+            if (a.isNotEmpty()) sb.append("IP: ${a.joinToString(", ")}\n")
+            val mx = doh(host, "MX")
+            if (mx.isNotEmpty()) sb.append("Mail server (MX): ${mx.joinToString(", ")}\n")
+            val ns = doh(host, "NS")
+            if (ns.isNotEmpty()) sb.append("Nameserver: ${ns.joinToString(", ")}\n")
+            val txt = doh(host, "TXT")
+            val spf = txt.any { it.contains("v=spf1") }
+            if (mx.isNotEmpty() && !spf) findings += "SPF record nahi hai — koi bhi is domain se nakli email bhej sakta hai (spoofing)"
+            val dmarc = doh("_dmarc.$host", "TXT").any { it.contains("v=DMARC1") }
+            if (mx.isNotEmpty() && !dmarc) findings += "DMARC record nahi hai — email spoofing rokne ka system nahi hai"
+            if (spf) sb.append("✓ SPF hai\n")
+            if (dmarc) sb.append("✓ DMARC hai\n")
+        } catch (_: Exception) { }
+
+        // TLS protocol + cipher
+        if (baseUrl.startsWith("https://")) {
+            try {
+                val conn = URL(baseUrl).openConnection() as HttpsURLConnection
+                conn.connectTimeout = 10000; conn.readTimeout = 10000
+                conn.connect()
+                sb.append("TLS: ${conn.cipherSuite}\n")
+                if (conn.cipherSuite.contains("TLSv1.0") || conn.cipherSuite.contains("TLSv1.1")) {
+                    findings += "Purana TLS protocol (${conn.cipherSuite}) — kamzor encryption"
+                }
+                conn.disconnect()
+            } catch (_: Exception) { }
+        }
+
+        // HTTP methods
+        try {
+            val req = Request.Builder().url(baseUrl).method("OPTIONS", null)
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                val allow = res.header("Allow") ?: res.header("Access-Control-Allow-Methods") ?: ""
+                if (allow.isNotBlank()) {
+                    sb.append("HTTP methods: $allow\n")
+                    val risky = listOf("PUT", "DELETE", "TRACE").filter { allow.contains(it, ignoreCase = true) }
+                    if (risky.isNotEmpty()) findings += "Khatarnak HTTP methods khule hai (${risky.joinToString(", ")}) — file badalna/mitana possible ho sakta hai"
+                }
+            }
+        } catch (_: Exception) { }
+
+        // Exposed sensitive paths (status check only)
+        val base = baseUrl.trimEnd('/')
+        val sensitive = listOf(
+            "/.git/HEAD" to "Git folder khula hai — pura source code mil sakta hai",
+            "/.env" to ".env file khuli hai — passwords/keys leak ho sakte hai",
+            "/wp-login.php" to "WordPress login page mila — brute-force ka nishana banta hai",
+            "/phpmyadmin/" to "phpMyAdmin khula hai — database login page public hai",
+            "/server-status" to "Server status page khula hai — andar ki jaankari leak hoti hai",
+            "/backup/" to "Backup folder mila — purani files mil sakti hai",
+            "/.DS_Store" to ".DS_Store file mili — folder ki file list leak hoti hai"
+        )
+        for ((path, risk) in sensitive) {
+            try {
+                val req = Request.Builder().url(base + path).head()
+                    .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                client.newCall(req).execute().use { res ->
+                    if (res.code == 200) {
+                        sb.append("⚠ $path → 200 (khula hai)\n")
+                        findings += "$path khula hai — $risk"
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        // robots.txt / sitemap (info only)
+        for (path in listOf("/robots.txt", "/sitemap.xml")) {
+            try {
+                val req = Request.Builder().url(base + path).head()
+                    .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                client.newCall(req).execute().use { res ->
+                    if (res.code == 200) sb.append("✓ $path hai\n")
+                }
+            } catch (_: Exception) { }
+        }
+
+        // Subdomains via crt.sh (public certificate logs)
+        try {
+            val root = host.removePrefix("www.")
+            val req = Request.Builder().url("https://crt.sh/?q=%25.$root&output=json")
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                val body = res.body?.string() ?: ""
+                if (res.isSuccessful && body.startsWith("[")) {
+                    val arr = org.json.JSONArray(body)
+                    val subs = sortedSetOf<String>()
+                    for (i in 0 until arr.length()) {
+                        val name = arr.optJSONObject(i)?.optString("common_name") ?: continue
+                        if (name.endsWith(root) && !name.contains("*")) subs += name
+                    }
+                    if (subs.isNotEmpty()) {
+                        sb.append("Subdomains (${subs.size}): ${subs.take(12).joinToString(", ")}")
+                        if (subs.size > 12) sb.append(" …")
+                        sb.append("\n")
+                    }
+                }
+            }
+        } catch (_: Exception) { }
+
+        return sb.toString()
+    }
+
+    private fun doh(name: String, type: String): List<String> {
+        val req = Request.Builder()
+            .url("https://cloudflare-dns.com/dns-query?name=$name&type=$type")
+            .header("Accept", "application/dns-json")
+            .build()
+        return client.newCall(req).execute().use { res ->
+            val body = res.body?.string() ?: return emptyList()
+            val answers = org.json.JSONObject(body).optJSONArray("Answer") ?: return emptyList()
+            (0 until answers.length()).mapNotNull { i ->
+                answers.optJSONObject(i)?.optString("data")?.trim('"')
+            }
+        }
     }
 
     private fun certFindings(url: String): List<String> {
