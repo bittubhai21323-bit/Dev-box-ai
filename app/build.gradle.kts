@@ -5,9 +5,31 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Fixed debug keystore, stored base64 in the repo (debug.keystore.b64) and
+// decoded here at configuration time. Without this, every CI runner generates
+// a fresh debug keystore -> different signature per build -> updates fail with
+// "package conflicts with an existing package".
+val debugKeystoreFile = file("debug.keystore")
+if (!debugKeystoreFile.exists()) {
+    val b64File = file("debug.keystore.b64")
+    if (b64File.exists()) {
+        debugKeystoreFile.writeBytes(
+            java.util.Base64.getMimeDecoder().decode(b64File.readText())
+        )
+    }
+}
+
 android {
     namespace = "com.example.devboxai"
     compileSdk = 35
+    signingConfigs {
+        getByName("debug") {
+            storeFile = debugKeystoreFile
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     defaultConfig {
         applicationId = "com.example.devboxai"
         minSdk = 26
