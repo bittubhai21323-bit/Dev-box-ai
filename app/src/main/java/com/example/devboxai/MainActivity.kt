@@ -48,6 +48,7 @@ private fun Root() {
 
     val items = remember {
         listOf(
+            Triple("hud",          "HUD",     Icons.Default.Radar),
             Triple("chat",         "AI",      Icons.Default.Chat),
             Triple("voice",        "Control", Icons.Default.Mic),
             Triple("security",     "Shield",  Icons.Default.Shield),
@@ -116,7 +117,8 @@ private fun Root() {
             }
         }
     ) { pad ->
-        NavHost(nav, startDestination = "chat", modifier = Modifier.padding(pad)) {
+        NavHost(nav, startDestination = "hud", modifier = Modifier.padding(pad)) {
+            composable("hud")          { HudScreen() }
             composable("chat")         { ChatScreen() }
             composable("voice")        { VoiceControlScreen() }
             composable("security")     { SecurityScreen() }
