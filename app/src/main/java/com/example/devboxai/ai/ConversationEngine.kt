@@ -36,8 +36,38 @@ class ConversationEngine(
 
     fun newConversationId(): String = UUID.randomUUID().toString()
 
+    /** Boss ka profile + yaadein ke saath pura system prompt. */
+    private fun fullSystemPrompt(): String = SYSTEM_PROMPT + BossMemory.promptBlock(contextProvider())
+
     suspend fun send(conversationId: String, userText: String): String {
         chatDao.insert(ChatMessage(conversationId = conversationId, role = "user", content = userText))
+
+        // Boss ki yaad wale commands: "yaad rakho ...", "/yaad", "/bhool"
+        val memCtx = contextProvider()
+        val trimmed = userText.trim()
+        val lower = trimmed.lowercase()
+        if (memCtx != null) {
+            val memReply: String? = when {
+                lower.startsWith("yaad rakho") || lower.startsWith("yaad rakhna") || lower.startsWith("remember") -> {
+                    val mem = trimmed.replace(Regex("(?i)^(yaad rakho|yaad rakhna|remember)[:\\s]*"), "")
+                    if (BossMemory.add(memCtx, mem)) "✓ Yaad kar liya, Boss: $mem"
+                    else "Boss, kya yaad rakhna hai wo bhi bolo — jaise: yaad rakho mera dost Rahul hai"
+                }
+                lower == "/yaad" || lower == "kya yaad hai" -> {
+                    val list = BossMemory.all(memCtx)
+                    if (list.isEmpty()) "Boss, abhi kuch yaad nahi hai. 'yaad rakho ...' bolke sikha do."
+                    else "Boss, ye yaad hai mujhe:\n" + list.joinToString("\n") { "• $it" }
+                }
+                lower == "/bhool" || lower == "sab bhool jao" -> {
+                    BossMemory.clear(memCtx); "✓ Sab bhool gaya, Boss."
+                }
+                else -> null
+            }
+            if (memReply != null) {
+                chatDao.insert(ChatMessage(conversationId = conversationId, role = "assistant", content = memReply))
+                return memReply
+            }
+        }
 
         // Instant local commands (/mausam, /calc, /battery, ...) — no server needed
         QuickCommands.handle(contextProvider(), userText)?.let { localReply ->
@@ -80,7 +110,7 @@ class ConversationEngine(
     /** Free no-key AI server (Pollinations). Used when no Gemini key is set. */
     private suspend fun askFreeServer(history: List<ChatMessage>, withSystem: Boolean = true): String {
         val messagesJson = JSONArray()
-        if (withSystem) messagesJson.put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
+        if (withSystem) messagesJson.put(JSONObject().put("role", "system").put("content", fullSystemPrompt()))
         history.forEach {
             messagesJson.put(JSONObject().put("role", it.role).put("content", it.content))
         }
@@ -119,7 +149,7 @@ class ConversationEngine(
             put("contents", contentsJson)
             if (withSystem) put(
                 "systemInstruction",
-                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT)))
+                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", fullSystemPrompt())))
             )
         }
         val response = withContext(Dispatchers.IO) {

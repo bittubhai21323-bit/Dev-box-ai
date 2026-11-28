@@ -53,6 +53,9 @@ object QuickCommands {
         return when (cmd) {
             "help", "madad" -> """
                 ⚡ Quick Commands:
+                yaad rakho <baat> — DevBox AI ko sikhao, hamesha yaad rakhega
+                /yaad — kya-kya yaad hai dekho
+                /bhool — sab yaadein saaf karo
                 /mausam <sheher> — mausam jaano
                 /calc <hisaab> — calculator (jaise /calc 25*4+10)
                 /battery — battery kitni hai
