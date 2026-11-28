@@ -10,6 +10,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -34,6 +36,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.devboxai.firebase.FirebaseConfigStore
 import com.example.devboxai.ui.screens.*
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,6 +100,33 @@ private fun Root() {
         } catch (_: Exception) {}
     }
 
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Column(Modifier.padding(16.dp)) {
+                    Text("DevBox AI", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.padding(4.dp))
+                    Text("Menu", style = MaterialTheme.typography.bodySmall)
+                }
+                items.forEachIndexed { i, (route, label, icon) ->
+                    NavigationDrawerItem(
+                        label = { Text(label) },
+                        icon = { Icon(icon, label) },
+                        selected = selected == i,
+                        onClick = {
+                            goTab(route)
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    ) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -104,8 +134,9 @@ private fun Root() {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
                             painter = painterResource(id = R.drawable.avatar),
-                            contentDescription = "AI",
-                            modifier = Modifier.size(36.dp).clip(CircleShape),
+                            contentDescription = "Menu",
+                            modifier = Modifier.size(36.dp).clip(CircleShape)
+                                .clickable { scope.launch { drawerState.open() } },
                             contentScale = ContentScale.Crop
                         )
                         Spacer(Modifier.width(10.dp))
@@ -128,18 +159,6 @@ private fun Root() {
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
-        },
-        bottomBar = {
-            NavigationBar {
-                items.forEachIndexed { i, (route, label, icon) ->
-                    NavigationBarItem(
-                        selected = selected == i,
-                        onClick = { goTab(route) },
-                        icon = { Icon(icon, label) },
-                        label = { Text(label) }
-                    )
-                }
-            }
         }
     ) { pad ->
         NavHost(nav, startDestination = "hud", modifier = Modifier.padding(pad)) {
@@ -165,5 +184,6 @@ private fun Root() {
                 FirebaseSetupScreen(onDone = { nav.popBackStack() })
             }
         }
+    }
     }
 }
