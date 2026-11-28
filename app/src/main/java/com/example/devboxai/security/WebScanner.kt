@@ -213,6 +213,34 @@ object WebScanner {
                 val debugMarks = listOf("whoops, looks like something went wrong", "django debug", "debug = true", "laravel", "stack trace", "you're seeing this error because you have debug")
                     .filter { lower.contains(it) }
                 if (debugMarks.isNotEmpty()) findings += "Debug mode ke nishan mile (${debugMarks.joinToString(", ")}) — andar ki galtiyan sabko dikh sakti hai"
+                // ---- Payment checks ----
+                val gateways = listOf(
+                    "razorpay" to "Razorpay", "stripe" to "Stripe", "payu" to "PayU",
+                    "paytm" to "Paytm", "phonepe" to "PhonePe", "cashfree" to "Cashfree",
+                    "ccavenue" to "CCAvenue", "paypal" to "PayPal", "instamojo" to "Instamojo",
+                    "billdesk" to "BillDesk", "juspay" to "Juspay", "easebuzz" to "Easebuzz"
+                ).filter { lower.contains(it.first) }.map { it.second }
+                val isPaymentPage = listOf("checkout", "payment", "pay now", "card number", "upi", "cvv")
+                    .any { lower.contains(it) } || gateways.isNotEmpty()
+                if (gateways.isNotEmpty()) sb.append("💳 Payment gateway: ${gateways.joinToString(", ")}\n")
+                if (isPaymentPage && !isHttps) {
+                    findings += "Payment wala page bina HTTPS ke hai — card/UPI ki jaankari plain text me jayegi, bahut bada khatra"
+                }
+                val cardInput = Regex("""<input[^>]+(cc-number|cardnumber|card-number|card_number|ccnum)[^>]*>""").containsMatchIn(lower)
+                if (cardInput) {
+                    findings += "Card number seedha website ke page par manga ja raha hai — gateway ke secure page par hona chahiye (PCI risk)"
+                }
+                val cvvInput = Regex("""<input[^>]+(cvv|cvc)[^>]*>""").containsMatchIn(lower)
+                if (cvvInput && gateways.isEmpty()) {
+                    findings += "CVV seedha website par manga ja raha hai aur koi jaana-maana gateway nahi dikha — nakli payment page ho sakta hai"
+                }
+                if (lower.contains("upi://")) sb.append("💳 UPI payment link mila\n")
+                val payIframes = Regex("""<iframe[^>]+src\s*=\s*["']https?://([^/"']+)""").findAll(lower)
+                    .map { it.groupValues[1] }.filter { it.contains("pay") || it.contains("checkout") }.distinct().toList()
+                if (payIframes.isNotEmpty()) sb.append("Payment iframe: ${payIframes.joinToString(", ")}\n")
+                if (isPaymentPage && isHttps && gateways.isEmpty() && !cardInput) {
+                    sb.append("Payment page hai par gateway pehchana nahi gaya — haath se check kar lena\n")
+                }
             }
             for (cookie in setCookies) {
                 val name = cookie.substringBefore("=").trim()
@@ -246,6 +274,7 @@ object WebScanner {
     }
 
     private fun categoryFor(f: String): String = when {
+        listOf("payment", "card", "CVV", "UPI", "gateway", "PCI").any { f.contains(it, ignoreCase = true) } -> "💳 Payment kamiyan"
         listOf("SSL", "TLS", "certificate", "cipher", "HTTPS", "encryption").any { f.contains(it, ignoreCase = true) } -> "🔒 SSL/HTTPS kamiyan"
         listOf("header", "CSP", "HSTS", "Referrer").any { f.contains(it, ignoreCase = true) } -> "🛡 Security Header kamiyan"
         f.contains("cookie", ignoreCase = true) -> "🍪 Cookie kamiyan"
@@ -258,6 +287,9 @@ object WebScanner {
     }
 
     private fun fixFor(f: String): String = when {
+        f.contains("Payment wala page") -> "Payment page ko turant HTTPS par le jao, bina SSL ke payment mat lo"
+        f.contains("Card number seedha") -> "Card ki jaankari gateway (Razorpay/Stripe) ke secure page par lo, apne server par kabhi mat lo"
+        f.contains("CVV seedha") -> "Sirf jaane-maane gateway se payment lo, CVV apne page par mat mango"
         f.contains("HTTPS nahi") -> "SSL certificate lagao (Let's Encrypt free hai) aur http ko https par redirect karo"
         f.contains("Strict-Transport-Security") && f.contains("gayab") -> "Header lagao: Strict-Transport-Security: max-age=31536000; includeSubDomains"
         f.contains("HSTS") -> "HSTS ko max-age=31536000; includeSubDomains; preload karo"
