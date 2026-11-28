@@ -228,7 +228,7 @@ object QuickCommands {
         val total2 = second.sum()
         val totalDiff = total2 - total1
         val usage = if (totalDiff > 0) (100.0 * (totalDiff - (idle2 - idle1)) / totalDiff) else 0.0
-        return "⚙️ CPU: $cores cores, abhi usage %.1f%%".format(usage)
+        "⚙️ CPU: $cores cores, abhi usage %.1f%%".format(usage)
     }
 
     private fun tempInfo(): String {
