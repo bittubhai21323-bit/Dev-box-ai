@@ -22,6 +22,7 @@ import com.example.devboxai.termux.TermuxResultBus
 import com.example.devboxai.tools.CliTool
 import com.example.devboxai.tools.ToolsCatalog
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TermuxToolsScreen() {
     val context = LocalContext.current

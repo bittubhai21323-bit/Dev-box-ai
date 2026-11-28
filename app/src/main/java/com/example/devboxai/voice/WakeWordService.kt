@@ -3,6 +3,8 @@ package com.example.devboxai.voice
 import android.app.Notification
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -77,7 +79,11 @@ class WakeWordService : Service() {
             .setContentTitle("DevBox is listening")
             .setContentText("Say \"Hey DevBox\" — I'll reply in your language")
             .setOngoing(true).build()
-        startForeground(200, notif)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(200, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else {
+            startForeground(200, notif)
+        }
 
         recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
             setRecognitionListener(listener)

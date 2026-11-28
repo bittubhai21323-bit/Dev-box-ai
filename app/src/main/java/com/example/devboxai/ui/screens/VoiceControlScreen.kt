@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 
 data class VoiceRow(val cmd: String, val res: String, val lang: String)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VoiceControlScreen() {
     val context = LocalContext.current
