@@ -147,6 +147,35 @@ object WebScanner {
             if (bodyText.contains("Index of /")) {
                 findings += "Directory listing khuli hai — server ki file list sabko dikh rahi hai"
             }
+            // Page-level deep checks
+            if (bodyText.isNotEmpty()) {
+                val lower = bodyText.lowercase()
+                val tech = mutableListOf<String>()
+                if (lower.contains("wp-content") || lower.contains("wp-includes")) tech += "WordPress"
+                if (lower.contains("__next_data__")) tech += "Next.js"
+                if (lower.contains("data-reactroot") || lower.contains("react")) tech += "React"
+                if (lower.contains("ng-version")) tech += "Angular"
+                if (lower.contains("bootstrap")) tech += "Bootstrap"
+                val jq = Regex("""jquery[-.](\d+\.\d+\.\d+)""").find(lower)?.groupValues?.getOrNull(1)
+                if (jq != null) {
+                    tech += "jQuery $jq"
+                    val major = jq.substringBefore(".").toIntOrNull() ?: 3
+                    if (major < 3) findings += "Purana jQuery $jq hai — isme jaane-maane XSS bugs hai, update chahiye"
+                }
+                if (tech.isNotEmpty()) sb.append("\nTechnology: ${tech.joinToString(", ")}\n")
+                if (!isHttps && lower.contains("type=\"password\"")) {
+                    findings += "Password wala form bina HTTPS ke hai — password plain text me jayega"
+                }
+                if (isHttps && Regex("""<form[^>]+action\s*=\s*["']http://""").containsMatchIn(lower)) {
+                    findings += "Form ka data http:// (bina secure) par ja raha hai"
+                }
+                val emails = Regex("""[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}""").findAll(bodyText)
+                    .map { it.value }.distinct().take(5).toList()
+                if (emails.isNotEmpty()) sb.append("Page par mile email: ${emails.joinToString(", ")}\n")
+                if (Regex("""<!--[^>]*(password|secret|api[_-]?key|token)""").containsMatchIn(lower)) {
+                    findings += "Page ke HTML comment me password/secret jaisi cheez likhi hai — sabko dikh sakti hai"
+                }
+            }
 
             // ---- Deep scan ----
             val host = try { URL(current).host } catch (_: Exception) { "" }
@@ -286,6 +315,111 @@ object WebScanner {
                 }
             } catch (_: Exception) { }
         }
+
+        // WAF / CDN detection from headers
+        val hdr = try {
+            val req = Request.Builder().url(baseUrl).head()
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                res.headers.names().associateWith { (res.header(it) ?: "").lowercase() }
+            }
+        } catch (_: Exception) { emptyMap() }
+        val waf = when {
+            hdr.containsKey("cf-ray") || (hdr["server"]?.contains("cloudflare") == true) -> "Cloudflare"
+            hdr.containsKey("x-amz-cf-id") -> "AWS CloudFront"
+            hdr.containsKey("x-akamai-transformed") || (hdr["server"]?.contains("akamai") == true) -> "Akamai"
+            hdr.containsKey("x-sucuri-id") -> "Sucuri"
+            hdr.containsKey("x-iinfo") -> "Incapsula/Imperva"
+            else -> ""
+        }
+        if (waf.isNotBlank()) sb.append("🛡 WAF/CDN: $waf\n")
+        else findings += "WAF/CDN nahi dikha — website seedha server par hai, attack rokne wali parat nahi hai"
+
+        // CORS check: does the site reflect any Origin?
+        try {
+            val req = Request.Builder().url(baseUrl).head()
+                .header("User-Agent", "DevBoxAI-Scanner/1.0")
+                .header("Origin", "https://evil-test.example")
+                .build()
+            client.newCall(req).execute().use { res ->
+                val acao = res.header("Access-Control-Allow-Origin") ?: ""
+                val acac = res.header("Access-Control-Allow-Credentials") ?: ""
+                if (acao == "https://evil-test.example" && acac.equals("true", ignoreCase = true)) {
+                    findings += "CORS khula hai — koi bhi website user ke login ke saath data padh sakti hai"
+                } else if (acao == "*") {
+                    sb.append("CORS: sabke liye khula (*) — public API ke liye theek hai\n")
+                }
+            }
+        } catch (_: Exception) { }
+
+        // Old TLS versions still accepted?
+        if (baseUrl.startsWith("https://")) {
+            for (proto in listOf("TLSv1.1", "TLSv1")) {
+                try {
+                    val factory = javax.net.ssl.SSLSocketFactory.getDefault() as javax.net.ssl.SSLSocketFactory
+                    val socket = factory.createSocket() as javax.net.ssl.SSLSocket
+                    socket.enabledProtocols = arrayOf(proto)
+                    socket.connect(java.net.InetSocketAddress(host, 443), 4000)
+                    socket.startHandshake()
+                    socket.close()
+                    findings += "Purana $proto ab bhi chalta hai — kamzor encryption, band hona chahiye"
+                } catch (_: Exception) { }
+            }
+        }
+
+        // Common ports
+        val ports = listOf(
+            21 to "FTP", 22 to "SSH", 25 to "SMTP", 80 to "HTTP", 443 to "HTTPS",
+            3306 to "MySQL", 5432 to "PostgreSQL", 6379 to "Redis",
+            8080 to "HTTP-Alt", 8443 to "HTTPS-Alt", 27017 to "MongoDB"
+        )
+        val openPorts = mutableListOf<String>()
+        for ((port, name) in ports) {
+            try {
+                java.net.Socket().use { s ->
+                    s.connect(java.net.InetSocketAddress(host, port), 700)
+                    openPorts += "$port ($name)"
+                    if (port in listOf(3306, 5432, 6379, 27017)) {
+                        findings += "Database port $port ($name) internet par khula hai — seedha database attack ho sakta hai"
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        if (openPorts.isNotEmpty()) sb.append("Khule ports: ${openPorts.joinToString(", ")}\n")
+
+        // Admin / login pages
+        for (path in listOf("/admin", "/admin/", "/login", "/wp-admin/", "/administrator/")) {
+            try {
+                val req = Request.Builder().url(base + path).head()
+                    .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+                client.newCall(req).execute().use { res ->
+                    if (res.code == 200 || res.code == 401 || res.code == 403) {
+                        sb.append("🔑 $path → ${res.code} (login/admin page mila)\n")
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+
+        // security.txt
+        try {
+            val req = Request.Builder().url("$base/.well-known/security.txt").head()
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                if (res.code == 200) sb.append("✓ security.txt hai (security contact diya hai)\n")
+            }
+        } catch (_: Exception) { }
+
+        // robots.txt hidden paths (info)
+        try {
+            val req = Request.Builder().url("$base/robots.txt")
+                .header("User-Agent", "DevBoxAI-Scanner/1.0").build()
+            client.newCall(req).execute().use { res ->
+                val txt = res.body?.string() ?: ""
+                val dis = txt.lines().filter { it.trim().startsWith("Disallow:", ignoreCase = true) }
+                    .map { it.substringAfter(":").trim() }.filter { it.isNotBlank() && it != "/" }
+                if (dis.isNotEmpty()) sb.append("robots.txt me chhupaye raste: ${dis.take(8).joinToString(", ")}\n")
+            }
+        } catch (_: Exception) { }
 
         // Subdomains via crt.sh (public certificate logs)
         try {
